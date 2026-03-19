@@ -3,24 +3,26 @@
   <Name>gridmind-frontend</Name>
   <Repository>ghcr.io/richowen/gridmind-frontend:latest</Repository>
   <Registry>https://ghcr.io/</Registry>
-  <Network>bridge</Network>
+  <Network>br0</Network>
+  <MyIP>192.168.1.76</MyIP>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/richowen/GridMind</Support>
   <Project>https://github.com/richowen/GridMind</Project>
-  <Overview>GridMind Frontend — React/TypeScript dashboard for the GridMind solar battery optimiser. Served via nginx. Connects to the gridmind-backend container on port 8000.</Overview>
+  <Overview>GridMind Frontend — React/TypeScript dashboard for the GridMind solar battery optimiser. Served via nginx on port 3009. Proxies API and WebSocket traffic to the gridmind-backend container at 192.168.1.75:8009.</Overview>
   <Category>HomeAutomation:</Category>
-  <WebUI>http://[IP]:[PORT:3009]</WebUI>
+  <WebUI>http://[IP]:3009</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/richowen/GridMind/main/unraid/gridmind-frontend.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/richowen/GridMind/main/legacy/icon.png</Icon>
-  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <!-- extra_hosts adds 192.168.1.75 backend to /etc/hosts so nginx can resolve the backend hostname -->
+  <ExtraParams>--restart=unless-stopped --add-host=backend:192.168.1.75</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>gridmind-backend must be running and accessible on port 8000.</Requires>
+  <Requires>gridmind-backend must be running at 192.168.1.75:8009 on br0. Copy unraid/nginx.conf from the repo to /mnt/user/appdata/gridmind/nginx.conf before starting this container.</Requires>
 
-  <!-- Port -->
-  <Config Name="Web UI Port" Target="80" Default="3009" Mode="tcp" Description="Port to access the GridMind web dashboard." Type="Port" Display="always" Required="true" Mask="false">3009</Config>
+  <!-- Custom nginx config: listens on 3009, proxies to backend:8009 -->
+  <Config Name="nginx config" Target="/etc/nginx/conf.d/default.conf" Default="/mnt/user/appdata/gridmind/nginx.conf" Mode="ro" Description="Path to the custom nginx.conf from the GridMind repo (unraid/nginx.conf). Copy it to your appdata folder first." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/gridmind/nginx.conf</Config>
 </Container>

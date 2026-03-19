@@ -1,69 +1,66 @@
 # GridMind — Unraid Compose Manager stack
 # Place this file at: /mnt/user/appdata/gridmind/docker-compose.yml
+# Also copy unraid/nginx.conf to /mnt/user/appdata/gridmind/nginx.conf
 # Then add it via Unraid's "Compose Manager" plugin.
 #
-# Before starting:
-#   1. Copy the .env.example from the repo to the same folder as this file and rename it .env
-#   2. Fill in DB_PASSWORD and DB_ROOT_PASSWORD in .env
-#   3. All other GridMind settings (Home Assistant, Octopus Energy, InfluxDB, etc.)
-#      are configured through the web UI after first launch.
+# Prerequisites:
+#   1. An existing MariaDB instance accessible at 192.168.1.2:3306
+#      - Create a database named 'gridmind' and a user with full access to it
+#   2. An existing InfluxDB 2.x instance accessible at 192.168.1.64:8086
+#      - InfluxDB connection details (token, org, bucket) are configured via the GridMind UI
+#   3. Copy .env.example to the same folder as this file, rename it .env, and fill in DB credentials
+#
+# Networking:
+#   Both containers are placed on the br0 macvlan network so they share the same
+#   192.168.1.0/24 subnet as InfluxDB. InfluxDB blocks requests from outside this subnet.
+#   - Backend: 192.168.1.75:8009
+#   - Frontend: 192.168.1.76:3009
+#   Make sure these IPs are outside your DHCP range to avoid conflicts.
 
 version: "3.8"
 
 services:
-  # ── MariaDB ────────────────────────────────────────────────────────────────
-  mariadb:
-    image: mariadb:10.11
-    container_name: gridmind-mariadb
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: gridmind
-      MYSQL_USER: ${DB_USER:-gridmind}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - /mnt/user/appdata/gridmind/mariadb:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-
-  # ── InfluxDB ───────────────────────────────────────────────────────────────
-  influxdb:
-    image: influxdb:2.7
-    container_name: gridmind-influxdb
-    ports:
-      - "8086:8086"
-    volumes:
-      - /mnt/user/appdata/gridmind/influxdb:/var/lib/influxdb2
-    restart: unless-stopped
-
   # ── Backend ────────────────────────────────────────────────────────────────
   backend:
     image: ghcr.io/richowen/gridmind-backend:latest
     container_name: gridmind-backend
-    ports:
-      - "8009:8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8009"
     environment:
-      DB_HOST: mariadb
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST:-192.168.1.2}
+      DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME:-gridmind}
       DB_USER: ${DB_USER:-gridmind}
       DB_PASSWORD: ${DB_PASSWORD}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    depends_on:
-      mariadb:
-        condition: service_healthy
+    networks:
+      br0:
+        ipv4_address: 192.168.1.75
     restart: unless-stopped
 
   # ── Frontend ───────────────────────────────────────────────────────────────
   frontend:
     image: ghcr.io/richowen/gridmind-frontend:latest
     container_name: gridmind-frontend
-    ports:
-      - "3009:80"
+    extra_hosts:
+      # Allows nginx to resolve 'backend' → backend container's macvlan IP
+      - "backend:192.168.1.75"
+    volumes:
+      # Custom nginx config: listens on 3009, proxies to backend:8009
+      - /mnt/user/appdata/gridmind/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      br0:
+        ipv4_address: 192.168.1.76
     depends_on:
       - backend
     restart: unless-stopped
+
+# ── Macvlan network on Unraid's br0 bridge ─────────────────────────────────
+networks:
+  br0:
+    driver: macvlan
+    driver_opts:
+      parent: br0
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1

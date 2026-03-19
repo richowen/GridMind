@@ -3,33 +3,32 @@
   <Name>gridmind-backend</Name>
   <Repository>ghcr.io/richowen/gridmind-backend:latest</Repository>
   <Registry>https://ghcr.io/</Registry>
-  <Network>bridge</Network>
+  <Network>br0</Network>
+  <MyIP>192.168.1.75</MyIP>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/richowen/GridMind</Support>
   <Project>https://github.com/richowen/GridMind</Project>
-  <Overview>GridMind Backend — AI-powered solar battery optimiser. Manages scheduling, Octopus Energy pricing, Home Assistant integration, and InfluxDB logging. All runtime settings are configured via the web UI after first launch.</Overview>
+  <Overview>GridMind Backend — AI-powered solar battery optimiser. Manages scheduling, Octopus Energy pricing, Home Assistant integration, and InfluxDB logging. Connects to your existing MariaDB and InfluxDB instances. All runtime settings are configured via the web UI after first launch.</Overview>
   <Category>HomeAutomation:</Category>
-  <WebUI>http://[IP]:[PORT:8009]/docs</WebUI>
+  <WebUI>http://[IP]:8009/docs</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/richowen/GridMind/main/unraid/gridmind-backend.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/richowen/GridMind/main/legacy/icon.png</Icon>
+  <!-- Overrides the default CMD to run uvicorn on port 8009 -->
+  <PostArgs>sh -c "alembic upgrade head &amp;&amp; uvicorn app.main:app --host 0.0.0.0 --port 8009"</PostArgs>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
-  <PostArgs/>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>MariaDB 10.11+ database (can use Unraid's MariaDB container). InfluxDB 2.x is optional but recommended for historical data.</Requires>
+  <Requires>Existing MariaDB 10.11+ instance with a 'gridmind' database and user. Existing InfluxDB 2.x instance (connection configured via the GridMind UI). Both must be on the 192.168.1.0/24 subnet. Container must be placed on br0 with static IP 192.168.1.75.</Requires>
 
-  <!-- Port -->
-  <Config Name="API Port" Target="8000" Default="8009" Mode="tcp" Description="GridMind API and WebSocket port. The frontend connects to this port." Type="Port" Display="always" Required="true" Mask="false">8009</Config>
-
-  <!-- Database -->
-  <Config Name="DB Host" Target="DB_HOST" Default="mariadb" Mode="" Description="Hostname or IP of your MariaDB/MySQL server. Use the container name if on the same Docker network, or the Unraid IP if using the host network." Type="Variable" Display="always" Required="true" Mask="false">mariadb</Config>
+  <!-- Database — point at your existing MariaDB instance -->
+  <Config Name="DB Host" Target="DB_HOST" Default="192.168.1.2" Mode="" Description="IP or hostname of your existing MariaDB instance." Type="Variable" Display="always" Required="true" Mask="false">192.168.1.2</Config>
   <Config Name="DB Port" Target="DB_PORT" Default="3306" Mode="" Description="MariaDB port." Type="Variable" Display="always" Required="true" Mask="false">3306</Config>
-  <Config Name="DB Name" Target="DB_NAME" Default="gridmind" Mode="" Description="Database name. Must exist before first start (GridMind will run migrations automatically)." Type="Variable" Display="always" Required="true" Mask="false">gridmind</Config>
+  <Config Name="DB Name" Target="DB_NAME" Default="gridmind" Mode="" Description="Database name. Must exist before first start — GridMind will run migrations automatically." Type="Variable" Display="always" Required="true" Mask="false">gridmind</Config>
   <Config Name="DB User" Target="DB_USER" Default="gridmind" Mode="" Description="Database username." Type="Variable" Display="always" Required="true" Mask="false">gridmind</Config>
-  <Config Name="DB Password" Target="DB_PASSWORD" Default="" Mode="" Description="Database password." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="DB Password" Target="DB_PASSWORD" Default="" Mode="" Description="Database password. Must match the password used when creating the MariaDB user." Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
   <!-- Log level -->
   <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging verbosity: DEBUG, INFO, WARNING, or ERROR." Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
