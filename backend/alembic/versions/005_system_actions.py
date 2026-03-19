@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("new_value", sa.String(100), nullable=False),
         sa.Column("source", sa.String(50), nullable=False),
         sa.Column("reason", sa.Text),
-        sa.Column("success", sa.Boolean, default=True),
+        sa.Column("success", sa.Boolean, default=True, server_default=sa.true()),
     )
     op.create_index("idx_action_timestamp", "system_actions", ["timestamp"])
     op.create_index("idx_action_type", "system_actions", ["action_type"])
