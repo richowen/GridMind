@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>gridmind-backend</Name>
+  <Repository>ghcr.io/richowen/gridmind-backend:latest</Repository>
+  <Registry>https://ghcr.io/</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/richowen/GridMind</Support>
+  <Project>https://github.com/richowen/GridMind</Project>
+  <Overview>GridMind Backend — AI-powered solar battery optimiser. Manages scheduling, Octopus Energy pricing, Home Assistant integration, and InfluxDB logging. All runtime settings are configured via the web UI after first launch.</Overview>
+  <Category>HomeAutomation:</Category>
+  <WebUI>http://[IP]:[PORT:8009]/docs</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/richowen/GridMind/main/unraid/gridmind-backend.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/richowen/GridMind/main/legacy/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>MariaDB 10.11+ database (can use Unraid's MariaDB container). InfluxDB 2.x is optional but recommended for historical data.</Requires>
+
+  <!-- Port -->
+  <Config Name="API Port" Target="8000" Default="8009" Mode="tcp" Description="GridMind API and WebSocket port. The frontend connects to this port." Type="Port" Display="always" Required="true" Mask="false">8009</Config>
+
+  <!-- Database -->
+  <Config Name="DB Host" Target="DB_HOST" Default="mariadb" Mode="" Description="Hostname or IP of your MariaDB/MySQL server. Use the container name if on the same Docker network, or the Unraid IP if using the host network." Type="Variable" Display="always" Required="true" Mask="false">mariadb</Config>
+  <Config Name="DB Port" Target="DB_PORT" Default="3306" Mode="" Description="MariaDB port." Type="Variable" Display="always" Required="true" Mask="false">3306</Config>
+  <Config Name="DB Name" Target="DB_NAME" Default="gridmind" Mode="" Description="Database name. Must exist before first start (GridMind will run migrations automatically)." Type="Variable" Display="always" Required="true" Mask="false">gridmind</Config>
+  <Config Name="DB User" Target="DB_USER" Default="gridmind" Mode="" Description="Database username." Type="Variable" Display="always" Required="true" Mask="false">gridmind</Config>
+  <Config Name="DB Password" Target="DB_PASSWORD" Default="" Mode="" Description="Database password." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <!-- Log level -->
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging verbosity: DEBUG, INFO, WARNING, or ERROR." Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+</Container>

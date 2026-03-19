@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>gridmind-frontend</Name>
+  <Repository>ghcr.io/richowen/gridmind-frontend:latest</Repository>
+  <Registry>https://ghcr.io/</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/richowen/GridMind</Support>
+  <Project>https://github.com/richowen/GridMind</Project>
+  <Overview>GridMind Frontend — React/TypeScript dashboard for the GridMind solar battery optimiser. Served via nginx. Connects to the gridmind-backend container on port 8000.</Overview>
+  <Category>HomeAutomation:</Category>
+  <WebUI>http://[IP]:[PORT:3009]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/richowen/GridMind/main/unraid/gridmind-frontend.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/richowen/GridMind/main/legacy/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>gridmind-backend must be running and accessible on port 8000.</Requires>
+
+  <!-- Port -->
+  <Config Name="Web UI Port" Target="80" Default="3009" Mode="tcp" Description="Port to access the GridMind web dashboard." Type="Port" Display="always" Required="true" Mask="false">3009</Config>
+</Container>

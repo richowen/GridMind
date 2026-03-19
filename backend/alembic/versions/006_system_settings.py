@@ -7,6 +7,7 @@ Create Date: 2025-01-01
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = "006"
 down_revision = "005"
@@ -15,18 +16,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "system_settings",
-        sa.Column("key", sa.String(100), primary_key=True),
-        sa.Column("value", sa.Text, nullable=False),
-        sa.Column("value_type", sa.String(20), default="string"),
-        sa.Column("category", sa.String(50), nullable=False),
-        sa.Column("description", sa.Text),
-        sa.Column("updated_at", sa.DateTime, server_default=sa.func.now(), onupdate=sa.func.now()),
-    )
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    existing_tables = inspector.get_table_names()
 
+    if "system_settings" not in existing_tables:
+        op.create_table(
+            "system_settings",
+            sa.Column("key", sa.String(100), primary_key=True),
+            sa.Column("value", sa.Text, nullable=False),
+            sa.Column("value_type", sa.String(20), default="string"),
+            sa.Column("category", sa.String(50), nullable=False),
+            sa.Column("description", sa.Text),
+            sa.Column("updated_at", sa.DateTime, server_default=sa.func.now(), onupdate=sa.func.now()),
+        )
+
+    # INSERT IGNORE ensures seed rows are added without failing if they already exist
     op.execute("""
-        INSERT INTO system_settings (key, value, value_type, category, description) VALUES
+        INSERT IGNORE INTO system_settings (key, value, value_type, category, description) VALUES
         ('battery_capacity_kwh', '10.6', 'float', 'battery', 'Battery capacity in kWh'),
         ('battery_max_charge_kw', '10.5', 'float', 'battery', 'Max charge rate in kW'),
         ('battery_max_discharge_kw', '5.0', 'float', 'battery', 'Max discharge rate in kW'),

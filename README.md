@@ -13,15 +13,15 @@ cp .env.example .env
 docker-compose up -d
 
 # 3. Access the UI
-open http://192.168.1.2:3000
+open http://192.168.1.2:3009
 ```
 
 ## Architecture
 
 ```
-Browser :3000 (React + Tailwind)
+Browser :3009 (React + Tailwind)
     ↕ REST + WebSocket
-Backend :8000 (FastAPI + APScheduler)
+Backend :8009 (FastAPI + APScheduler)
     ↕ SQL
 MariaDB :3306 (gridmind database)
     ↕ HTTP
@@ -45,9 +45,9 @@ Home Assistant :8123 (Fox inverter + immersions)
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| GridMind UI | http://192.168.1.2:3000 | Main web interface |
-| API | http://192.168.1.2:8000 | REST API |
-| API Docs | http://192.168.1.2:8000/docs | Swagger UI |
+| GridMind UI | http://192.168.1.2:3009 | Main web interface |
+| API | http://192.168.1.2:8009 | REST API |
+| API Docs | http://192.168.1.2:8009/docs | Swagger UI |
 | InfluxDB | http://192.168.1.2:8086 | Time-series DB |
 
 ## First-Time Setup

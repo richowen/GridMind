@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { WSMessage } from '@/types/domain'
 
-const WS_URL = `ws://${window.location.hostname}:8000/ws`
+// Use the same host/port the user is on — nginx proxies /ws to the backend
+const WS_URL = `ws://${window.location.host}/ws`
 const RECONNECT_DELAY = 5000
 
 export function useWebSocket() {

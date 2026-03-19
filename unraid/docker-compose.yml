@@ -1,0 +1,69 @@
+# GridMind — Unraid Compose Manager stack
+# Place this file at: /mnt/user/appdata/gridmind/docker-compose.yml
+# Then add it via Unraid's "Compose Manager" plugin.
+#
+# Before starting:
+#   1. Copy the .env.example from the repo to the same folder as this file and rename it .env
+#   2. Fill in DB_PASSWORD and DB_ROOT_PASSWORD in .env
+#   3. All other GridMind settings (Home Assistant, Octopus Energy, InfluxDB, etc.)
+#      are configured through the web UI after first launch.
+
+version: "3.8"
+
+services:
+  # ── MariaDB ────────────────────────────────────────────────────────────────
+  mariadb:
+    image: mariadb:10.11
+    container_name: gridmind-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: gridmind
+      MYSQL_USER: ${DB_USER:-gridmind}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - /mnt/user/appdata/gridmind/mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── InfluxDB ───────────────────────────────────────────────────────────────
+  influxdb:
+    image: influxdb:2.7
+    container_name: gridmind-influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - /mnt/user/appdata/gridmind/influxdb:/var/lib/influxdb2
+    restart: unless-stopped
+
+  # ── Backend ────────────────────────────────────────────────────────────────
+  backend:
+    image: ghcr.io/richowen/gridmind-backend:latest
+    container_name: gridmind-backend
+    ports:
+      - "8009:8000"
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-gridmind}
+      DB_USER: ${DB_USER:-gridmind}
+      DB_PASSWORD: ${DB_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  frontend:
+    image: ghcr.io/richowen/gridmind-frontend:latest
+    container_name: gridmind-frontend
+    ports:
+      - "3009:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
