@@ -1,6 +1,6 @@
 """Optimization router: recommendation, prices, and current system state endpoints."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends
@@ -31,7 +31,7 @@ def get_current_recommendation(db: Session = Depends(get_db)):
 @router.get("/prices/current", response_model=List[PriceOut])
 def get_current_prices(hours: int = 48, db: Session = Depends(get_db)):
     """Return upcoming electricity prices for the next N hours."""
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()  # DB stores naive UTC datetimes
     prices = (
         db.query(ElectricityPrice)
         .filter(ElectricityPrice.valid_to >= now)
@@ -46,7 +46,7 @@ def get_current_prices(hours: int = 48, db: Session = Depends(get_db)):
 def get_price_stats(db: Session = Depends(get_db)):
     """Return statistics for today's prices."""
     import statistics
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()  # DB stores naive UTC datetimes
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     prices = (
         db.query(ElectricityPrice)

@@ -11,8 +11,8 @@ class ImmersionDeviceOut(BaseModel):
     display_name: str
     switch_entity_id: str
     temp_sensor_entity_id: Optional[str] = None
-    is_enabled: bool
-    sort_order: int
+    is_enabled: bool = True  # default True handles legacy NULL rows from MariaDB
+    sort_order: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -38,23 +38,23 @@ class SmartRuleOut(BaseModel):
     id: int
     immersion_id: int
     rule_name: str
-    is_enabled: bool
-    priority: int
+    is_enabled: bool = True
+    priority: int = 10
     action: str
-    logic_operator: str
-    price_enabled: bool
+    logic_operator: str = "AND"
+    price_enabled: bool = False
     price_operator: Optional[str] = None
     price_threshold_pence: Optional[float] = None
-    soc_enabled: bool
+    soc_enabled: bool = False
     soc_operator: Optional[str] = None
     soc_threshold_percent: Optional[float] = None
-    solar_enabled: bool
+    solar_enabled: bool = False
     solar_operator: Optional[str] = None
     solar_threshold_kw: Optional[float] = None
-    temp_enabled: bool
+    temp_enabled: bool = False
     temp_operator: Optional[str] = None
     temp_threshold_c: Optional[float] = None
-    time_enabled: bool
+    time_enabled: bool = False
     time_start: Optional[time] = None
     time_end: Optional[time] = None
 
@@ -91,9 +91,9 @@ class TempTargetOut(BaseModel):
     target_temp_c: float
     target_time: time
     days_of_week: str
-    heating_rate_c_per_hour: float
-    buffer_minutes: int
-    is_enabled: bool
+    heating_rate_c_per_hour: float = 5.0
+    buffer_minutes: int = 30
+    is_enabled: bool = True
 
     model_config = {"from_attributes": True}
 

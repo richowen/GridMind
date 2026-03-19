@@ -34,9 +34,10 @@ async def optimization_loop():
         battery_mode = await ha_client.get_battery_mode()
 
         # Get upcoming prices from DB
+        # DB stores naive UTC datetimes — use utcnow() (naive) for comparisons
         db = SessionLocal()
         try:
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             prices_rows = (
                 db.query(ElectricityPrice)
                 .filter(ElectricityPrice.valid_to >= now)
@@ -181,7 +182,8 @@ async def immersion_evaluation():
         db = SessionLocal()
         try:
             devices = db.query(ImmersionDevice).filter(ImmersionDevice.is_enabled == True).all()
-            now = datetime.now(timezone.utc)
+            # DB stores naive UTC datetimes — use utcnow() (naive) for comparisons
+            now = datetime.utcnow()
 
             # Get current price
             current_price_row = (
