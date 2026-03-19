@@ -31,9 +31,10 @@ def upgrade() -> None:
             sa.Column("updated_at", sa.DateTime, server_default=sa.func.now(), onupdate=sa.func.now()),
         )
 
-    # INSERT IGNORE ensures seed rows are added without failing if they already exist
+    # INSERT IGNORE ensures seed rows are added without failing if they already exist.
+    # `key` and `value` are reserved words in MariaDB — backtick-quote them in raw SQL.
     op.execute("""
-        INSERT IGNORE INTO system_settings (key, value, value_type, category, description) VALUES
+        INSERT IGNORE INTO system_settings (`key`, `value`, value_type, category, description) VALUES
         ('battery_capacity_kwh', '10.6', 'float', 'battery', 'Battery capacity in kWh'),
         ('battery_max_charge_kw', '10.5', 'float', 'battery', 'Max charge rate in kW'),
         ('battery_max_discharge_kw', '5.0', 'float', 'battery', 'Max discharge rate in kW'),
