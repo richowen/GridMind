@@ -11,8 +11,8 @@
 #   3. Copy .env.example to the same folder as this file, rename it .env, and fill in DB credentials
 #
 # Networking:
-#   Both containers are placed on the br0 macvlan network so they share the same
-#   192.168.1.0/24 subnet as InfluxDB. InfluxDB blocks requests from outside this subnet.
+#   Both containers join the existing 'br0' ipvlan network (external: true — Compose will NOT
+#   create a new network, it attaches to the one Unraid already manages).
 #   - Backend: 192.168.1.75:8009
 #   - Frontend: 192.168.1.76:3009
 #   Make sure these IPs are outside your DHCP range to avoid conflicts.
@@ -42,7 +42,7 @@ services:
     image: ghcr.io/richowen/gridmind-frontend:latest
     container_name: gridmind-frontend
     extra_hosts:
-      # Allows nginx to resolve 'backend' → backend container's macvlan IP
+      # Allows nginx to resolve 'backend' → backend container's IP on br0
       - "backend:192.168.1.75"
     volumes:
       # Custom nginx config: listens on 3009, proxies to backend:8009
@@ -54,13 +54,10 @@ services:
       - backend
     restart: unless-stopped
 
-# ── Macvlan network on Unraid's br0 bridge ─────────────────────────────────
+# ── Attach to Unraid's existing br0 ipvlan network ─────────────────────────
+# external: true means Compose will NOT create this network — it joins the
+# existing one that Unraid already manages. This avoids the "pool overlaps"
+# error and keeps GridMind on the same physical subnet as InfluxDB.
 networks:
   br0:
-    driver: macvlan
-    driver_opts:
-      parent: br0
-    ipam:
-      config:
-        - subnet: 192.168.1.0/24
-          gateway: 192.168.1.1
+    external: true

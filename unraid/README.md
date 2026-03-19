@@ -108,20 +108,14 @@ With individual templates, use Unraid's **Check for Updates** button on each con
 
 ## Networking notes
 
-The `br0` macvlan network is defined in the compose file as:
+The compose file attaches to Unraid's **existing** `br0` ipvlan network using `external: true`:
 
 ```yaml
 networks:
   br0:
-    driver: macvlan
-    driver_opts:
-      parent: br0
-    ipam:
-      config:
-        - subnet: 192.168.1.0/24
-          gateway: 192.168.1.1
+    external: true
 ```
 
-If your gateway is different from `192.168.1.1`, edit the compose file before deploying.
+This means Compose does **not** create a new network — it joins the one Unraid already manages. This avoids the `pool overlaps` error and ensures GridMind is on the same `192.168.1.0/24` subnet as InfluxDB.
 
-> **Unraid host ↔ macvlan containers:** By default, the Unraid host cannot communicate directly with macvlan containers. This is a Linux kernel limitation. If you need the Unraid host to reach GridMind, create a macvlan shim interface — see the [Unraid forums](https://forums.unraid.net) for guidance. Accessing GridMind from other LAN devices (PC, phone, etc.) works without any extra steps.
+The static IPs (`192.168.1.75` and `192.168.1.76`) must be outside your router's DHCP range to avoid conflicts.

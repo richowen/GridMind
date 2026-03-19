@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.core.settings_cache import get_setting_int
+from app.core.settings_cache import get_setting_int, get_setting_float
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,21 @@ async def optimization_loop():
         finally:
             db.close()
 
+        # Compute price classification from DB thresholds
+        price_classification = None
+        if current_price is not None:
+            neg_thresh = get_setting_float("price_negative_threshold", 0.0)
+            cheap_thresh = get_setting_float("price_cheap_threshold", 10.0)
+            exp_thresh = get_setting_float("price_expensive_threshold", 25.0)
+            if current_price < neg_thresh:
+                price_classification = "negative"
+            elif current_price < cheap_thresh:
+                price_classification = "cheap"
+            elif current_price > exp_thresh:
+                price_classification = "expensive"
+            else:
+                price_classification = "normal"
+
         # Push to WebSocket clients
         await manager.broadcast({
             "type": "optimization_result",
@@ -106,7 +121,9 @@ async def optimization_loop():
                 "battery_soc": soc,
                 "battery_mode": battery_mode,
                 "solar_power_kw": solar,
+                "solar_forecast_today_kwh": solar_forecast,
                 "current_price_pence": current_price,
+                "price_classification": price_classification,
                 "recommended_mode": result.recommended_mode,
                 "decision_reason": result.decision_reason,
                 "last_updated": datetime.now().isoformat(),
