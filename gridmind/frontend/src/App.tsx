@@ -1,0 +1,37 @@
+/** Root app component — sets up React Router with sidebar layout. */
+
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Sidebar from '@/components/layout/Sidebar'
+import Header from '@/components/layout/Header'
+import Dashboard from '@/pages/Dashboard'
+import Prices from '@/pages/Prices'
+import Immersions from '@/pages/Immersions'
+import History from '@/pages/History'
+import Controls from '@/pages/Controls'
+import Settings from '@/pages/Settings'
+import { useLiveState } from '@/hooks/useLiveState'
+
+export default function App() {
+  const { connected } = useLiveState()
+
+  return (
+    <BrowserRouter>
+      <div className="flex h-screen bg-background">
+        <Sidebar />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <Header connected={connected} />
+          <main className="flex-1 overflow-y-auto p-6">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/prices" element={<Prices />} />
+              <Route path="/immersions" element={<Immersions />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/controls" element={<Controls />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </main>
+        </div>
+      </div>
+    </BrowserRouter>
+  )
+}
