@@ -4,7 +4,7 @@ Starts APScheduler on startup, mounts all routers, exposes WebSocket endpoint.""
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -53,5 +53,5 @@ async def health():
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket):
+async def websocket_endpoint(websocket: WebSocket):
     await manager.handle(websocket)

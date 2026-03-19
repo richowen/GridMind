@@ -3,7 +3,7 @@ Depends on settings_cache for product, tariff, and region codes."""
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List
 
 import httpx
 
@@ -12,6 +12,15 @@ from app.core.settings_cache import get_settings
 logger = logging.getLogger(__name__)
 
 OCTOPUS_API_BASE = "https://api.octopus.energy/v1"
+
+
+def _parse_dt(iso_str: str) -> datetime:
+    """Parse an ISO 8601 datetime string (with or without Z suffix) into a naive UTC datetime.
+    MariaDB DateTime columns do not accept timezone-aware datetimes or the Z suffix."""
+    # Replace trailing Z with +00:00 so fromisoformat handles it on Python < 3.11
+    dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    # Strip tzinfo — MariaDB DateTime is naive; we store everything as UTC
+    return dt.replace(tzinfo=None)
 
 
 class OctopusEnergyClient:
@@ -52,8 +61,8 @@ class OctopusEnergyClient:
                 price_pence = item["value_inc_vat"]
                 classification = self._classify(price_pence, neg_threshold, cheap_threshold, exp_threshold)
                 prices.append({
-                    "valid_from": item["valid_from"],
-                    "valid_to": item["valid_to"],
+                    "valid_from": _parse_dt(item["valid_from"]),
+                    "valid_to": _parse_dt(item["valid_to"]),
                     "price_pence": price_pence,
                     "classification": classification,
                 })
