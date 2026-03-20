@@ -25,4 +25,8 @@
 
   <!-- Custom nginx config: listens on 3009, proxies to backend:8009 -->
   <Config Name="nginx config" Target="/etc/nginx/conf.d/default.conf" Default="/mnt/user/appdata/gridmind/nginx.conf" Mode="ro" Description="Path to the custom nginx.conf from the GridMind repo (unraid/nginx.conf). Copy it to your appdata folder first." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/gridmind/nginx.conf</Config>
+
+  <!-- Optional HTTP basic auth — leave both blank to disable auth entirely -->
+  <Config Name="Basic Auth Username" Target="GRIDMIND_USER" Default="" Mode="" Description="Username for HTTP basic auth on the frontend. Leave blank to disable auth." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Basic Auth Password" Target="GRIDMIND_PASS" Default="" Mode="" Description="Password for HTTP basic auth on the frontend. Leave blank to disable auth." Type="Variable" Display="always" Required="false" Mask="true"></Config>
 </Container>

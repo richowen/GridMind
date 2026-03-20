@@ -13,8 +13,9 @@ AUTH_CONF="/etc/nginx/auth.conf"
 
 if [ -n "${GRIDMIND_USER}" ] && [ -n "${GRIDMIND_PASS}" ]; then
     echo "GridMind: enabling basic auth for user '${GRIDMIND_USER}'"
-    # Use -bi (batch + stdin) so the password is never visible in the process list.
-    printf '%s' "${GRIDMIND_PASS}" | htpasswd -bi "${HTPASSWD_FILE}" "${GRIDMIND_USER}"
+    # Use -bci (create + batch + stdin) so the password is never visible in the process list.
+    # -c creates the file (required on first run), -b batch mode, -i reads password from stdin.
+    printf '%s' "${GRIDMIND_PASS}" | htpasswd -bci "${HTPASSWD_FILE}" "${GRIDMIND_USER}"
     # Write nginx snippet that enables auth
     cat > "${AUTH_CONF}" <<EOF
 auth_basic           "GridMind";
