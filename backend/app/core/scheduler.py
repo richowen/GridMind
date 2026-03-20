@@ -201,17 +201,19 @@ async def optimization_loop():
             db.add(state_record)
             db.commit()
 
+            # Compute price classification while the session is still open —
+            # prices_rows are ORM objects that require an active session for
+            # attribute access (lazy loading). Must run before db.close().
+            from app.services.octopus_energy import get_current_price_classification
+            from app.core.settings_cache import get_settings as _get_all_settings
+            price_classification = get_current_price_classification(
+                price_rows=prices_rows,
+                now=now,
+                settings=_get_all_settings(),
+            )
+
         finally:
             db.close()
-
-        # Compute price classification for the current period.
-        from app.services.octopus_energy import get_current_price_classification
-        from app.core.settings_cache import get_settings as _get_all_settings
-        price_classification = get_current_price_classification(
-            price_rows=prices_rows,
-            now=now,
-            settings=_get_all_settings(),
-        )
 
         # Push to WebSocket clients
         await manager.broadcast({
@@ -349,15 +351,56 @@ async def immersion_evaluation():
                 )
 
                 # ── External change detection ─────────────────────────────────────────
-                # Only check when there is no active override (if an override is already
-                # active, GridMind is intentionally holding the state — no detection needed).
-                # Skip detection when last_commanded_state is NULL (first boot / never commanded).
+                # Two cases to handle:
+                #
+                # Case A — No active override: if the switch state differs from what
+                #   GridMind last commanded, the user changed it externally. Auto-create
+                #   an override so GridMind doesn't immediately revert the change.
+                #   Skip when last_commanded_state is NULL (first boot / never commanded).
+                #
+                # Case B — Active override exists but switch state contradicts it: the
+                #   user manually changed the switch *during* an active override (e.g.
+                #   turned it OFF while a "keep ON" override was running). Clear the
+                #   override so GridMind doesn't fight the user by turning it back on.
+                #   Update last_commanded_state to match so the next cycle is clean.
+                # ─────────────────────────────────────────────────────────────────────
+
                 if (
+                    active_override is not None
+                    and current_switch_state is not None
+                    and current_switch_state != active_override.desired_state
+                ):
+                    # Case B: user changed switch against an active override — clear it.
+                    state_label = "ON" if current_switch_state else "OFF"
+                    logger.info(
+                        f"Switch state for {device.name} contradicts active override "
+                        f"(override wants {'ON' if active_override.desired_state else 'OFF'}, "
+                        f"switch is {state_label}). Clearing override — user wins."
+                    )
+                    db.query(ManualOverride).filter(
+                        ManualOverride.immersion_id == device.id,
+                        ManualOverride.is_active == True,
+                    ).update({"is_active": False, "cleared_at": now, "cleared_by": "ha_external_contradiction"})
+                    device.last_commanded_state = current_switch_state
+                    try:
+                        db.flush()
+                    except Exception as flush_err:
+                        logger.warning(
+                            f"Could not flush override clear for {device.name}: {flush_err}. "
+                            "Skipping this device for this cycle."
+                        )
+                        db.rollback()
+                        continue
+                    # Override is now cleared — let normal rule evaluation run this cycle.
+                    active_override = None
+
+                elif (
                     active_override is None
                     and device.last_commanded_state is not None
                     and current_switch_state is not None
                     and current_switch_state != device.last_commanded_state
                 ):
+                    # Case A: no override, switch changed externally — auto-create override.
                     auto_duration = get_setting_int("manual_override_auto_duration_minutes", 120)
                     state_label = "ON" if current_switch_state else "OFF"
                     logger.info(
