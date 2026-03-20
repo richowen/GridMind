@@ -8,7 +8,7 @@ within the window rather than relying on fixed absolute p/kWh values.
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional
 
 import httpx
 
@@ -81,6 +81,33 @@ def classify_prices(prices: List[dict], settings: dict) -> List[dict]:
                 p["classification"] = "normal"
 
     return prices
+
+
+def get_current_price_classification(
+    price_rows: list,
+    now: datetime,
+    settings: dict,
+) -> Optional[str]:
+    """Return the classification string for the current price period, or None.
+
+    Shared helper used by optimization_loop and WebSocketManager.handle to avoid
+    duplicating the classify → find-current-period logic in both places.
+
+    Args:
+        price_rows: SQLAlchemy ElectricityPrice ORM rows (must have valid_from,
+                    valid_to, price_pence attributes).
+        now:        Current naive UTC datetime for period matching.
+        settings:   Settings dict from settings_cache (for threshold keys).
+    """
+    if not price_rows:
+        return None
+    batch = [{"price_pence": p.price_pence} for p in price_rows]
+    classify_prices(batch, settings)
+    current_idx = next(
+        (i for i, p in enumerate(price_rows) if p.valid_from <= now <= p.valid_to),
+        None,
+    )
+    return batch[current_idx].get("classification") if current_idx is not None else None
 
 
 class OctopusEnergyClient:

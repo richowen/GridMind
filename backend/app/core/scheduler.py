@@ -12,6 +12,8 @@ import zoneinfo
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
+from app.utils import utcnow
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.core.settings_cache import get_setting_int
@@ -127,7 +129,7 @@ async def optimization_loop():
         db = SessionLocal()
         try:
             # DB stores naive UTC datetimes — use utcnow() (naive) for comparisons
-            now = datetime.utcnow()
+            now = utcnow()
             prices_rows = (
                 db.query(ElectricityPrice)
                 .filter(ElectricityPrice.valid_to >= now)
@@ -169,11 +171,11 @@ async def optimization_loop():
 
             # Compute next scheduled run time for next_action_time field
             opt_interval_min = get_setting_int("optimization_interval_minutes", 5)
-            next_action_time = datetime.utcnow() + timedelta(minutes=opt_interval_min)
+            next_action_time = utcnow() + timedelta(minutes=opt_interval_min)
 
             # Store result in DB (same session)
             opt_record = OptimizationResult(
-                timestamp=datetime.utcnow(),
+                timestamp=utcnow(),
                 current_soc=soc,
                 current_solar_kw=solar,
                 current_price_pence=current_price,
@@ -188,7 +190,7 @@ async def optimization_loop():
             db.add(opt_record)
 
             state_record = SystemState(
-                timestamp=datetime.utcnow(),
+                timestamp=utcnow(),
                 battery_soc=soc,
                 battery_mode=battery_mode,
                 solar_power_kw=solar,
@@ -202,22 +204,14 @@ async def optimization_loop():
         finally:
             db.close()
 
-        # Compute price classification using the same percentage-based logic as
-        # octopus_energy.classify_prices — relative to the fetched batch's min/max range.
-        price_classification = None
-        if current_price is not None and prices_rows:
-            from app.services.octopus_energy import classify_prices
-            from app.core.settings_cache import get_settings as _get_all_settings
-            _all_settings = _get_all_settings()
-            _batch = [{"price_pence": p.price_pence} for p in prices_rows]
-            classify_prices(_batch, _all_settings)
-            # Find the classification for the current period
-            _current_row = next(
-                (p for p in prices_rows if p.valid_from <= now <= p.valid_to), None
-            )
-            if _current_row is not None:
-                _idx = prices_rows.index(_current_row)
-                price_classification = _batch[_idx].get("classification")
+        # Compute price classification for the current period.
+        from app.services.octopus_energy import get_current_price_classification
+        from app.core.settings_cache import get_settings as _get_all_settings
+        price_classification = get_current_price_classification(
+            price_rows=prices_rows,
+            now=now,
+            settings=_get_all_settings(),
+        )
 
         # Push to WebSocket clients
         await manager.broadcast({
@@ -233,7 +227,7 @@ async def optimization_loop():
                 "recommended_mode": result.recommended_mode,
                 "decision_reason": result.decision_reason,
                 "live_charge_rate_kw": live_charge_rate,
-                "last_updated": datetime.utcnow().isoformat(),
+                "last_updated": utcnow().isoformat(),
             },
         })
 
@@ -316,7 +310,7 @@ async def immersion_evaluation():
         try:
             devices = db.query(ImmersionDevice).filter(ImmersionDevice.is_enabled == True).all()
             # DB stores naive UTC datetimes — use utcnow() (naive) for comparisons
-            now = datetime.utcnow()
+            now = utcnow()
 
             # Get current price
             current_price_row = (

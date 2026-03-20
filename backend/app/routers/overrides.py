@@ -1,6 +1,6 @@
 """Overrides router: manual override set/clear for immersion devices."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.immersion import ImmersionDevice
 from app.models.overrides import ManualOverride
 from app.schemas.overrides import ManualOverrideOut, ManualOverrideCreate, OverrideStatusOut
+from app.utils import utcnow
 
 router = APIRouter(prefix="/overrides", tags=["overrides"])
 
@@ -23,7 +24,7 @@ def set_manual_override(body: ManualOverrideCreate, db: Session = Depends(get_db
 
     # Clear any existing active override for this device
     # DB stores naive UTC datetimes — use utcnow() for comparisons
-    now = datetime.utcnow()
+    now = utcnow()
     db.query(ManualOverride).filter(
         ManualOverride.immersion_id == body.immersion_id,
         ManualOverride.is_active == True,
@@ -49,7 +50,7 @@ def get_override_status(db: Session = Depends(get_db)):
     devices = db.query(ImmersionDevice).all()
     results = []
     # DB stores naive UTC datetimes — use utcnow() for comparisons
-    now = datetime.utcnow()
+    now = utcnow()
     for device in devices:
         active = (
             db.query(ManualOverride)
@@ -80,7 +81,7 @@ def clear_override(device_id: int, db: Session = Depends(get_db)):
     updated = db.query(ManualOverride).filter(
         ManualOverride.immersion_id == device_id,
         ManualOverride.is_active == True,
-    ).update({"is_active": False, "cleared_at": datetime.utcnow(), "cleared_by": "user"})
+    ).update({"is_active": False, "cleared_at": utcnow(), "cleared_by": "user"})
     db.commit()
     return {"cleared": updated}
 
@@ -91,6 +92,6 @@ def clear_all_overrides(db: Session = Depends(get_db)):
     # DB stores naive UTC datetimes — use utcnow() for comparisons
     updated = db.query(ManualOverride).filter(
         ManualOverride.is_active == True,
-    ).update({"is_active": False, "cleared_at": datetime.utcnow(), "cleared_by": "user"})
+    ).update({"is_active": False, "cleared_at": utcnow(), "cleared_by": "user"})
     db.commit()
     return {"cleared": updated}

@@ -7,11 +7,66 @@ rather than hanging indefinitely until OS-level keepalive fires."""
 
 import asyncio
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from app.utils import utcnow
+
 logger = logging.getLogger(__name__)
+
+
+async def _fetch_initial_state(db) -> Optional[dict]:
+    """Query DB for the latest optimization result and system state.
+
+    Returns a dict ready to send as the 'state' WebSocket message payload,
+    or None if no optimization result exists yet (first boot).
+
+    Extracted from WebSocketManager.handle() so the connection manager stays
+    focused on connection lifecycle rather than business logic.
+    """
+    from app.core.settings_cache import get_settings
+    from app.models.optimization import OptimizationResult, SystemState
+    from app.models.prices import ElectricityPrice
+    from app.services.octopus_energy import get_current_price_classification
+
+    latest_opt = (
+        db.query(OptimizationResult)
+        .order_by(OptimizationResult.timestamp.desc())
+        .first()
+    )
+    if not latest_opt:
+        return None
+
+    latest_state = (
+        db.query(SystemState)
+        .order_by(SystemState.timestamp.desc())
+        .first()
+    )
+
+    now = utcnow()
+    price_rows = (
+        db.query(ElectricityPrice)
+        .filter(ElectricityPrice.valid_to >= now)
+        .order_by(ElectricityPrice.valid_from)
+        .limit(96)
+        .all()
+    )
+    price_classification = get_current_price_classification(price_rows, now, get_settings())
+
+    return {
+        "battery_soc": latest_opt.current_soc,
+        "battery_mode": latest_state.battery_mode if latest_state else None,
+        "solar_power_kw": latest_opt.current_solar_kw,
+        "solar_forecast_today_kwh": latest_state.solar_forecast_today_kwh if latest_state else None,
+        "solar_forecast_next_hour_kw": latest_state.solar_forecast_next_hour_kw if latest_state else None,
+        "current_price_pence": latest_opt.current_price_pence,
+        "price_classification": price_classification,
+        "recommended_mode": latest_opt.recommended_mode,
+        "decision_reason": latest_opt.decision_reason,
+        "live_charge_rate_kw": None,  # Not stored in DB; populated by next broadcast
+        "last_updated": latest_opt.timestamp.isoformat() if latest_opt.timestamp else None,
+    }
 
 
 class WebSocketManager:
@@ -46,68 +101,12 @@ class WebSocketManager:
         # Send complete current state immediately on connect so the browser
         # doesn't show null values until the next 5-minute optimization tick.
         try:
-            from datetime import datetime
-            from app.core.settings_cache import get_settings
             from app.database import SessionLocal
-            from app.models.optimization import OptimizationResult, SystemState
-            from app.models.prices import ElectricityPrice
-            from app.services.octopus_energy import classify_prices
-
             db = SessionLocal()
             try:
-                latest_opt = (
-                    db.query(OptimizationResult)
-                    .order_by(OptimizationResult.timestamp.desc())
-                    .first()
-                )
-                latest_state = (
-                    db.query(SystemState)
-                    .order_by(SystemState.timestamp.desc())
-                    .first()
-                )
-
-                if latest_opt:
-                    # Compute price classification using the same percentage-based logic
-                    # as optimization_loop — keeps initial state consistent with broadcasts.
-                    price_classification = None
-                    if latest_opt.current_price_pence is not None:
-                        now = datetime.utcnow()
-                        price_rows = (
-                            db.query(ElectricityPrice)
-                            .filter(ElectricityPrice.valid_to >= now)
-                            .order_by(ElectricityPrice.valid_from)
-                            .limit(96)
-                            .all()
-                        )
-                        if price_rows:
-                            batch = [{"price_pence": p.price_pence} for p in price_rows]
-                            classify_prices(batch, get_settings())
-                            current_idx = next(
-                                (
-                                    i for i, p in enumerate(price_rows)
-                                    if p.valid_from <= now <= p.valid_to
-                                ),
-                                None,
-                            )
-                            if current_idx is not None:
-                                price_classification = batch[current_idx].get("classification")
-
-                    await websocket.send_json({
-                        "type": "state",
-                        "data": {
-                            "battery_soc": latest_opt.current_soc,
-                            "battery_mode": latest_state.battery_mode if latest_state else None,
-                            "solar_power_kw": latest_opt.current_solar_kw,
-                            "solar_forecast_today_kwh": latest_state.solar_forecast_today_kwh if latest_state else None,
-                            "solar_forecast_next_hour_kw": latest_state.solar_forecast_next_hour_kw if latest_state else None,
-                            "current_price_pence": latest_opt.current_price_pence,
-                            "price_classification": price_classification,
-                            "recommended_mode": latest_opt.recommended_mode,
-                            "decision_reason": latest_opt.decision_reason,
-                            "live_charge_rate_kw": None,  # Not stored in DB; populated by next broadcast
-                            "last_updated": latest_opt.timestamp.isoformat() if latest_opt.timestamp else None,
-                        },
-                    })
+                state = await _fetch_initial_state(db)
+                if state:
+                    await websocket.send_json({"type": "state", "data": state})
             finally:
                 db.close()
         except Exception as e:

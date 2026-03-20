@@ -12,6 +12,16 @@ from app.core.settings_cache import get_settings, get_setting_bool
 
 logger = logging.getLogger(__name__)
 
+# Optional dependency — influxdb-client may not be installed in all environments.
+# All write methods check _INFLUX_AVAILABLE before importing client objects.
+try:
+    from influxdb_client import InfluxDBClient as _InfluxClient, Point
+    from influxdb_client.client.write_api import SYNCHRONOUS
+    _INFLUX_AVAILABLE = True
+except ImportError:
+    _INFLUX_AVAILABLE = False
+    logger.warning("influxdb-client not installed — InfluxDB writes disabled")
+
 
 class InfluxDBClient:
     """Writes metrics to InfluxDB. Silently skips if disabled or unavailable."""
@@ -24,7 +34,6 @@ class InfluxDBClient:
 
     def _get_client(self):
         """Return a shared InfluxDB write client, recreating if settings changed."""
-        from influxdb_client import InfluxDBClient as _Client
         settings = get_settings()
         settings_key = f"{settings.get('influx_url')}:{settings.get('influx_token')}:{settings.get('influx_org')}"
         if self._client is None or self._client_settings_key != settings_key:
@@ -33,7 +42,7 @@ class InfluxDBClient:
                     self._client.close()
                 except Exception:
                     pass
-            self._client = _Client(
+            self._client = _InfluxClient(
                 url=settings["influx_url"],
                 token=settings["influx_token"],
                 org=settings["influx_org"],
@@ -42,15 +51,13 @@ class InfluxDBClient:
         return self._client
 
     def _is_enabled(self) -> bool:
-        return get_setting_bool("influx_enabled", True)
+        return _INFLUX_AVAILABLE and get_setting_bool("influx_enabled", True)
 
     def write_prices(self, prices: list) -> None:
         """Write electricity prices to InfluxDB (existing measurement schema)."""
         if not self._is_enabled():
             return
         try:
-            from influxdb_client.client.write_api import SYNCHRONOUS
-            from influxdb_client import Point
             settings = get_settings()
             client = self._get_client()
             write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -74,8 +81,6 @@ class InfluxDBClient:
         if not self._is_enabled():
             return
         try:
-            from influxdb_client.client.write_api import SYNCHRONOUS
-            from influxdb_client import Point
             settings = get_settings()
             client = self._get_client()
             write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -106,8 +111,6 @@ class InfluxDBClient:
         if not self._is_enabled():
             return
         try:
-            from influxdb_client.client.write_api import SYNCHRONOUS
-            from influxdb_client import Point
             settings = get_settings()
             client = self._get_client()
             write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -128,8 +131,6 @@ class InfluxDBClient:
         if not self._is_enabled():
             return
         try:
-            from influxdb_client.client.write_api import SYNCHRONOUS
-            from influxdb_client import Point
             settings = get_settings()
             client = self._get_client()
             write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -148,6 +149,8 @@ class InfluxDBClient:
 
     async def test_connection(self) -> dict:
         """Test InfluxDB connectivity."""
+        if not _INFLUX_AVAILABLE:
+            return {"success": False, "message": "influxdb-client not installed"}
         try:
             client = self._get_client()
             health = client.health()

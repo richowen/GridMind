@@ -7,6 +7,8 @@ from datetime import datetime, time
 from operator import eq, ge, gt, le, lt
 from typing import Optional
 
+from app.utils import utcnow
+
 logger = logging.getLogger(__name__)
 
 OPS = {"<": lt, "<=": le, ">": gt, ">=": ge, "==": eq}
@@ -43,7 +45,7 @@ class RulesEngine:
         # PRIORITY 1: Manual Override (always wins)
         if active_override:
             # expires_at is stored as naive UTC — compare against utcnow()
-            remaining = int((active_override.expires_at - datetime.utcnow()).total_seconds() / 60)
+            remaining = int((active_override.expires_at - utcnow()).total_seconds() / 60)
             return ImmersionDecision(
                 action=active_override.desired_state,
                 source="manual_override",

@@ -32,10 +32,12 @@ class HomeAssistantClient:
             if self._client and not self._client.is_closed:
                 # Schedule close on the running event loop to avoid leaking the
                 # connection pool when settings change (ha_url / ha_token).
+                # Use get_running_loop() (Python 3.10+) instead of the deprecated
+                # get_event_loop() — raises RuntimeError when no loop is running.
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     loop.create_task(self._client.aclose())
-                except Exception:
+                except RuntimeError:
                     pass  # No running loop (e.g. during tests) — let GC handle it
             self._client = httpx.AsyncClient(timeout=10)
             self._client_settings_key = settings_key

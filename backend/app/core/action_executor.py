@@ -2,8 +2,9 @@
 Only calls HA when state actually changes. Logs every action to system_actions table."""
 
 import logging
-from datetime import datetime
 from typing import Optional
+
+from app.utils import utcnow
 
 from sqlalchemy.orm import Session
 
@@ -37,7 +38,7 @@ def _log_action(
         db = SessionLocal()
     try:
         action = SystemAction(
-            timestamp=datetime.utcnow(),
+            timestamp=utcnow(),
             action_type=action_type,
             entity_id=entity_id,
             old_value=old_value,
