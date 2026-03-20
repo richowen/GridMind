@@ -31,7 +31,7 @@ export interface OptimizationResultOut {
   optimization_time_ms: number | null
   objective_value: number | null
   decision_reason: string | null
-  next_action_time: string | null
+  next_action_time: string | null  // Next scheduled optimization run (UTC ISO string)
 }
 
 export interface SystemStateOut {
@@ -39,13 +39,12 @@ export interface SystemStateOut {
   timestamp: string
   battery_soc: number | null
   battery_mode: string | null
-  battery_discharge_current: number | null
   solar_power_kw: number | null
   solar_forecast_today_kwh: number | null
-  solar_forecast_next_hour_kw: number | null
+  solar_forecast_next_hour_kw: number | null  // From Solcast 1hr forecast entity
   current_price_pence: number | null
-  immersion_main_on: boolean | null
-  immersion_lucy_on: boolean | null
+  // Note: immersion_main_on / immersion_lucy_on removed — per-device state is
+  // logged to InfluxDB immersion_states measurement instead.
 }
 
 export interface ImmersionDeviceOut {

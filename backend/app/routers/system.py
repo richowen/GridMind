@@ -1,6 +1,5 @@
 """System router: settings CRUD, connection tests, system control (pause/resume/optimize-now)."""
 
-import json
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException

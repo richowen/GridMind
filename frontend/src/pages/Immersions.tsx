@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Flame, Pencil, Trash2, X, Check } from 'lucide-react'
 import { immersionApi } from '@/api/immersion'
 import type { ImmersionDeviceOut, SmartRuleOut, TempTargetOut } from '@/types/api'
+import { DAY_NAMES } from '@/types/domain'
 
 // ── Blank templates ──────────────────────────────────────────────────────────
 
@@ -285,7 +286,8 @@ function RuleForm({
 
 // ── Target Form ──────────────────────────────────────────────────────────────
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+// DAY_NAMES uses Python weekday() convention: 0=Mon, 6=Sun — matches backend days_of_week storage.
+// Imported from domain.ts to avoid duplicate definitions.
 
 function TargetForm({
   initial,
@@ -362,12 +364,12 @@ function TargetForm({
       <div>
         <label className="text-xs text-muted-foreground block mb-2">Active days</label>
         <div className="flex gap-1.5">
-          {DAY_LABELS.map((label, i) => (
+          {(Object.entries(DAY_NAMES) as [string, string][]).map(([dayNum, label]) => (
             <button
-              key={i}
-              onClick={() => toggleDay(i)}
+              key={dayNum}
+              onClick={() => toggleDay(Number(dayNum))}
               className={`px-2 py-1 text-xs rounded ${
-                selectedDays.includes(String(i))
+                selectedDays.includes(dayNum)
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-secondary text-muted-foreground'
               }`}

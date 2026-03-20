@@ -51,11 +51,5 @@ export function useWebSocket() {
     }
   }, [connect])
 
-  const send = useCallback((data: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(data)
-    }
-  }, [])
-
-  return { connected, lastMessage, send }
+  return { connected, lastMessage }
 }

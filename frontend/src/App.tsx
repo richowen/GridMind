@@ -11,27 +11,34 @@ import Controls from '@/pages/Controls'
 import Settings from '@/pages/Settings'
 import { useLiveState } from '@/hooks/useLiveState'
 
-export default function App() {
+/** The main app shell (sidebar + header + content). */
+function AppShell() {
   const { connected } = useLiveState()
 
   return (
-    <BrowserRouter>
-      <div className="flex h-screen bg-background">
-        <Sidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header connected={connected} />
-          <main className="flex-1 overflow-y-auto p-6">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/prices" element={<Prices />} />
-              <Route path="/immersions" element={<Immersions />} />
-              <Route path="/history" element={<History />} />
-              <Route path="/controls" element={<Controls />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
-          </main>
-        </div>
+    <div className="flex h-screen bg-background">
+      <Sidebar />
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <Header connected={connected} />
+        <main className="flex-1 overflow-y-auto p-6">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/prices" element={<Prices />} />
+            <Route path="/immersions" element={<Immersions />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/controls" element={<Controls />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </main>
       </div>
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
     </BrowserRouter>
   )
 }

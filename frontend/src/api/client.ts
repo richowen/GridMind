@@ -1,16 +1,23 @@
-/** Base API client. All requests go through /api/v1 (proxied by nginx to backend:8000). */
+/** Base API client. All requests go through /api/v1 (proxied by nginx to backend:8009). */
 
 const BASE = '/api/v1'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string>),
+  }
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
+    headers,
   })
+
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`API ${res.status}: ${text}`)
   }
+
   return res.json() as Promise<T>
 }
 

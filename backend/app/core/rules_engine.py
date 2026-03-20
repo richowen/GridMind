@@ -42,7 +42,8 @@ class RulesEngine:
 
         # PRIORITY 1: Manual Override (always wins)
         if active_override:
-            remaining = int((active_override.expires_at - datetime.now()).total_seconds() / 60)
+            # expires_at is stored as naive UTC — compare against utcnow()
+            remaining = int((active_override.expires_at - datetime.utcnow()).total_seconds() / 60)
             return ImmersionDecision(
                 action=active_override.desired_state,
                 source="manual_override",
@@ -99,6 +100,7 @@ class RulesEngine:
         if current_temp is None or current_temp >= target.target_temp_c:
             return False
 
+        # Use local time for day-of-week and time-of-day comparisons (these are user-facing schedules)
         now = datetime.now()
         today_weekday = now.weekday()
         target_days = [int(d) for d in target.days_of_week.split(",")]
@@ -129,6 +131,7 @@ class RulesEngine:
         return op_fn(value, threshold)
 
     def _in_time_window(self, start: time, end: time) -> bool:
+        # Use local time for time-window comparisons (user-facing schedules)
         now = datetime.now().time()
         if start <= end:
             return start <= now <= end

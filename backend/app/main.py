@@ -32,9 +32,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Parse CORS origins from config (comma-separated string).
+# Set CORS_ORIGINS env var to restrict to specific frontend URL in production.
+# Example: CORS_ORIGINS=http://192.168.1.76:3009
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

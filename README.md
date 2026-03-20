@@ -1,31 +1,26 @@
 # GridMind
 
-**Solar battery intelligence system** — replaces Node-RED V2 with a modern FastAPI + React stack.
+**Solar battery intelligence system** — FastAPI + React stack for optimising solar battery charging/discharging based on Octopus Agile pricing.
 
-## Quick Start
+## Deployment
 
-```bash
-# 1. Copy and configure environment
-cp .env.example .env
-# Edit .env with your DB credentials
+GridMind runs as two containers on Unraid, connecting to your existing MariaDB and InfluxDB instances. See [`unraid/README.md`](unraid/README.md) for full setup instructions.
 
-# 2. Start all services
-docker-compose up -d
-
-# 3. Access the UI
-open http://192.168.1.2:3009
-```
+| Container | Image | Address |
+|-----------|-------|---------|
+| gridmind-backend | `ghcr.io/richowen/gridmind-backend:latest` | `192.168.1.75:8009` |
+| gridmind-frontend | `ghcr.io/richowen/gridmind-frontend:latest` | `192.168.1.76:3009` |
 
 ## Architecture
 
 ```
 Browser :3009 (React + Tailwind)
-    ↕ REST + WebSocket
+    ↕ REST + WebSocket (nginx proxy)
 Backend :8009 (FastAPI + APScheduler)
     ↕ SQL
-MariaDB :3306 (gridmind database)
+MariaDB :3306 (external — existing Unraid instance)
     ↕ HTTP
-InfluxDB :8086 (time-series metrics)
+InfluxDB :8086 (external — existing Unraid instance)
     ↕ HTTP
 Home Assistant :8123 (Fox inverter + immersions)
 ```
@@ -41,23 +36,15 @@ Home Assistant :8123 (Fox inverter + immersions)
 - **Full audit log** — every HA call logged to `system_actions` table
 - **Zero hardcoded values** — all config in DB, editable via Settings page
 
-## Services
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| GridMind UI | http://192.168.1.2:3009 | Main web interface |
-| API | http://192.168.1.2:8009 | REST API |
-| API Docs | http://192.168.1.2:8009/docs | Swagger UI |
-| InfluxDB | http://192.168.1.2:8086 | Time-series DB |
-
 ## First-Time Setup
 
-1. Start containers: `docker-compose up -d`
+1. Deploy containers via Unraid Docker GUI (see [`unraid/README.md`](unraid/README.md))
 2. Alembic migrations run automatically on backend startup
-3. Open Settings page and configure:
+3. Open `http://192.168.1.76:3009` and go to the **Settings** page to configure:
    - Home Assistant URL + token
    - Octopus Energy product/tariff/region codes
    - Battery capacity and limits
+   - InfluxDB connection details
 4. Click "Test HA Connection" to verify
 5. Click "Refresh Prices" to fetch initial Agile prices
 6. Automation starts immediately (every 5min optimization, every 1min immersion evaluation)
@@ -65,10 +52,7 @@ Home Assistant :8123 (Fox inverter + immersions)
 ## Development
 
 ```bash
-# Backend only (hot-reload via volume mount)
-docker-compose up backend mariadb
-
-# Frontend dev server
+# Frontend dev server (requires node_modules)
 cd frontend && npm install && npm run dev
 ```
 
@@ -84,7 +68,7 @@ gridmind/
 │   │   ├── schemas/       # Pydantic request/response schemas
 │   │   ├── services/      # External integrations (HA, Octopus, InfluxDB)
 │   │   └── websocket/     # WebSocket manager
-│   └── alembic/           # Database migrations
+│   └── alembic/           # Database migrations (001–007)
 ├── frontend/
 │   └── src/
 │       ├── api/           # API client functions
@@ -92,6 +76,11 @@ gridmind/
 │       ├── hooks/         # Custom React hooks
 │       ├── pages/         # Page components
 │       └── types/         # TypeScript types
-└── database/
-    └── seed_data.sql      # Reference seed data (handled by Alembic)
+├── database/
+│   └── seed_data.sql      # Reference seed data (handled by Alembic)
+└── unraid/
+    ├── gridmind-backend.xml   # Unraid container template
+    ├── gridmind-frontend.xml  # Unraid container template
+    ├── nginx.conf             # Frontend nginx config (copy to appdata)
+    └── README.md              # Full Unraid deployment guide
 ```

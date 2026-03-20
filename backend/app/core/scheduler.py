@@ -1,10 +1,15 @@
 """APScheduler jobs — replaces all Node-RED automation flows.
-Every job wraps its body in try/except so HA unavailability never crashes the scheduler."""
+Every job wraps its body in try/except so HA unavailability never crashes the scheduler.
+
+Scheduler intervals are read from DB settings at startup:
+  - optimization_interval_minutes (default 5)
+  - price_refresh_interval_minutes (default 30)
+"""
 
 import logging
 import math
 import zoneinfo
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -66,16 +71,40 @@ def _build_solar_forecast_profile(
 
     return result
 
-scheduler = AsyncIOScheduler()
+
+def _build_scheduler() -> AsyncIOScheduler:
+    """Build the APScheduler instance with intervals read from DB settings.
+
+    Falls back to hardcoded defaults if settings are not yet available
+    (e.g. on first boot before migrations run).
+    """
+    try:
+        opt_interval = get_setting_int("optimization_interval_minutes", 5)
+        price_interval = get_setting_int("price_refresh_interval_minutes", 30)
+    except Exception as e:
+        logger.warning(
+            f"Could not read scheduler intervals from DB (using defaults 5/30 min): {e}"
+        )
+        opt_interval = 5
+        price_interval = 30
+
+    logger.info(
+        f"Scheduler intervals: optimization={opt_interval}min, price_refresh={price_interval}min"
+    )
+
+    sched = AsyncIOScheduler()
+    sched.add_job(optimization_loop, "interval", minutes=opt_interval, id="optimization_loop")
+    sched.add_job(price_refresh, "interval", minutes=price_interval, id="price_refresh")
+    sched.add_job(immersion_evaluation, "interval", minutes=1, id="immersion_evaluation")
+    return sched
 
 
-@scheduler.scheduled_job("interval", minutes=5, id="optimization_loop")
 async def optimization_loop():
-    """Every 5min: get system state, run LP optimizer, apply to HA, store results."""
+    """Every N min: get system state, run LP optimizer, apply to HA, store results."""
     try:
         from app.core.optimizer import OptimizationInput, run_optimization
         from app.core.action_executor import action_executor
-        from app.core.settings_cache import get_setting
+        from app.core.settings_cache import get_setting, get_setting_float as _get_float
         from app.database import SessionLocal
         from app.models.optimization import OptimizationResult, SystemState
         from app.models.prices import ElectricityPrice
@@ -86,17 +115,18 @@ async def optimization_loop():
         # Get current system state from HA
         soc = await ha_client.get_battery_soc()
         solar = await ha_client.get_solar_power()
-        solar_forecast = await ha_client.get_solar_forecast_today()
+        solar_forecast_today = await ha_client.get_solar_forecast_today()
+        solar_forecast_1hr = await ha_client.get_solar_forecast_1hr()
         battery_mode = await ha_client.get_battery_mode()
         # Note 1: live BMS charge rate for LP upper-bound cap
         live_charge_rate = await ha_client.get_charge_rate()
         # Live battery voltage for accurate kW→amps conversion
         live_battery_voltage = await ha_client.get_battery_voltage()
 
-        # Get upcoming prices from DB
-        # DB stores naive UTC datetimes — use utcnow() (naive) for comparisons
+        # Single DB session for the entire optimization cycle
         db = SessionLocal()
         try:
+            # DB stores naive UTC datetimes — use utcnow() (naive) for comparisons
             now = datetime.utcnow()
             prices_rows = (
                 db.query(ElectricityPrice)
@@ -109,41 +139,41 @@ async def optimization_loop():
                 (p.price_pence for p in prices_rows if p.valid_from <= now <= p.valid_to),
                 None,
             )
-        finally:
-            db.close()
 
-        from app.core.optimizer import PricePeriod
-        price_periods = [
-            PricePeriod(p.valid_from, p.valid_to, p.price_pence)
-            for p in prices_rows
-        ]
+            from app.core.optimizer import PricePeriod
+            price_periods = [
+                PricePeriod(p.valid_from, p.valid_to, p.price_pence)
+                for p in prices_rows
+            ]
 
-        # Build per-period solar forecast profile from remaining-today kWh
-        solar_profile = _build_solar_forecast_profile(
-            prices=price_periods,
-            solar_now_kw=solar or 0.0,
-            solar_forecast_remaining_kwh=solar_forecast,
-        )
+            # Build per-period solar forecast profile from remaining-today kWh
+            solar_profile = _build_solar_forecast_profile(
+                prices=price_periods,
+                solar_now_kw=solar or 0.0,
+                solar_forecast_remaining_kwh=solar_forecast_today,
+            )
 
-        inp = OptimizationInput(
-            battery_soc=soc or 50.0,
-            solar_power_kw=solar or 0.0,
-            prices=price_periods,
-            solar_forecast_profile=solar_profile,
-            live_charge_rate_kw=live_charge_rate,
-            live_battery_voltage_v=live_battery_voltage,
-        )
+            inp = OptimizationInput(
+                battery_soc=soc or 50.0,
+                solar_power_kw=solar or 0.0,
+                prices=price_periods,
+                solar_forecast_profile=solar_profile,
+                live_charge_rate_kw=live_charge_rate,
+                live_battery_voltage_v=live_battery_voltage,
+            )
 
-        result = await run_optimization(inp)
+            result = await run_optimization(inp)
 
-        # Apply to HA
-        await action_executor.apply_battery(result)
+            # Apply to HA — pass db so action logs share this session
+            await action_executor.apply_battery(result, db=db)
 
-        # Store result in DB
-        db = SessionLocal()
-        try:
+            # Compute next scheduled run time for next_action_time field
+            opt_interval_min = get_setting_int("optimization_interval_minutes", 5)
+            next_action_time = datetime.utcnow() + timedelta(minutes=opt_interval_min)
+
+            # Store result in DB (same session)
             opt_record = OptimizationResult(
-                timestamp=datetime.now(),
+                timestamp=datetime.utcnow(),
                 current_soc=soc,
                 current_solar_kw=solar,
                 current_price_pence=current_price,
@@ -153,19 +183,22 @@ async def optimization_loop():
                 optimization_time_ms=result.optimization_time_ms,
                 objective_value=result.objective_value,
                 decision_reason=result.decision_reason,
+                next_action_time=next_action_time,
             )
             db.add(opt_record)
 
             state_record = SystemState(
-                timestamp=datetime.now(),
+                timestamp=datetime.utcnow(),
                 battery_soc=soc,
                 battery_mode=battery_mode,
                 solar_power_kw=solar,
-                solar_forecast_today_kwh=solar_forecast,
+                solar_forecast_today_kwh=solar_forecast_today,
+                solar_forecast_next_hour_kw=solar_forecast_1hr,
                 current_price_pence=current_price,
             )
             db.add(state_record)
             db.commit()
+
         finally:
             db.close()
 
@@ -191,13 +224,14 @@ async def optimization_loop():
                 "battery_soc": soc,
                 "battery_mode": battery_mode,
                 "solar_power_kw": solar,
-                "solar_forecast_today_kwh": solar_forecast,
+                "solar_forecast_today_kwh": solar_forecast_today,
+                "solar_forecast_next_hour_kw": solar_forecast_1hr,
                 "current_price_pence": current_price,
                 "price_classification": price_classification,
                 "recommended_mode": result.recommended_mode,
                 "decision_reason": result.decision_reason,
                 "live_charge_rate_kw": live_charge_rate,
-                "last_updated": datetime.now().isoformat(),
+                "last_updated": datetime.utcnow().isoformat(),
             },
         })
 
@@ -208,15 +242,16 @@ async def optimization_loop():
             "solar_power_kw": solar,
             "current_price_pence": current_price,
             "live_charge_rate_kw": live_charge_rate,
+            "solar_forecast_today_kwh": solar_forecast_today,
+            "solar_forecast_next_hour_kw": solar_forecast_1hr,
         })
 
     except Exception as e:
         logger.error(f"optimization_loop failed: {e}", exc_info=True)
 
 
-@scheduler.scheduled_job("interval", minutes=30, id="price_refresh")
 async def price_refresh():
-    """Every 30min: fetch latest Agile prices from Octopus API and store in DB."""
+    """Every N min: fetch latest Agile prices from Octopus API and store in DB."""
     try:
         from app.database import SessionLocal
         from app.models.prices import ElectricityPrice
@@ -255,11 +290,9 @@ async def price_refresh():
         logger.error(f"price_refresh failed: {e}", exc_info=True)
 
 
-@scheduler.scheduled_job("interval", minutes=1, id="immersion_evaluation")
 async def immersion_evaluation():
     """Every 1min: evaluate immersion rules for each enabled device and apply decisions."""
     try:
-        from datetime import datetime
         from app.core.rules_engine import rules_engine, SystemState as RulesState
         from app.core.action_executor import action_executor
         from app.database import SessionLocal
@@ -267,6 +300,7 @@ async def immersion_evaluation():
         from app.models.overrides import ManualOverride
         from app.models.prices import ElectricityPrice
         from app.services.home_assistant import ha_client
+        from app.services.influxdb import influx_client
 
         db = SessionLocal()
         try:
@@ -296,13 +330,13 @@ async def immersion_evaluation():
                 if device.temp_sensor_entity_id:
                     temp = await ha_client.get_temperature(device.temp_sensor_entity_id)
 
-                # Get active override
+                # Get active override — compare expires_at (naive UTC) against pre-computed now
                 active_override = (
                     db.query(ManualOverride)
                     .filter(
                         ManualOverride.immersion_id == device.id,
                         ManualOverride.is_active == True,
-                        ManualOverride.expires_at > datetime.now(),
+                        ManualOverride.expires_at > now,
                     )
                     .first()
                 )
@@ -316,10 +350,27 @@ async def immersion_evaluation():
                     smart_rules=device.smart_rules,
                 )
 
-                await action_executor.apply_immersion(device, decision)
+                await action_executor.apply_immersion(device, decision, db=db)
+
+                # Write per-device immersion state snapshot to InfluxDB
+                current_switch_state = await ha_client.get_switch_state(device.switch_entity_id)
+                influx_client.write_immersion_state(
+                    device_name=device.name,
+                    is_on=bool(current_switch_state),
+                    temp_c=temp,
+                )
+
+            # Commit any action log entries added during this cycle
+            db.commit()
 
         finally:
             db.close()
 
     except Exception as e:
         logger.error(f"immersion_evaluation failed: {e}", exc_info=True)
+
+
+# Build scheduler with DB-configured intervals.
+# _build_scheduler() is called at module import time; settings_cache will load
+# from DB on first access (or fall back to defaults if DB is not yet ready).
+scheduler = _build_scheduler()

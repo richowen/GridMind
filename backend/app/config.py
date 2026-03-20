@@ -1,4 +1,4 @@
-"""Minimal pydantic settings — only DB creds and log level from .env.
+"""Minimal pydantic settings — only DB creds, log level, and CORS origins from .env.
 All runtime settings are stored in the system_settings DB table."""
 
 from pydantic_settings import BaseSettings
@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     db_password: str = ""
     db_name: str = "gridmind"
     log_level: str = "INFO"
+    # Comma-separated list of allowed CORS origins.
+    # Set to "*" for development (default). In production, set to the frontend URL.
+    # Example: CORS_ORIGINS=http://192.168.1.76:3009
+    cors_origins: str = "*"
 
     @property
     def database_url(self) -> str:

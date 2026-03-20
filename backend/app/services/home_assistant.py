@@ -1,5 +1,8 @@
 """Home Assistant REST API client. Reads sensor states and controls entities.
-Depends on settings_cache for ha_url and ha_token."""
+Depends on settings_cache for ha_url and ha_token.
+
+Uses a persistent httpx.AsyncClient with connection pooling — recreated only when
+settings change — to avoid opening a new TCP connection on every HA call."""
 
 import logging
 from typing import Optional
@@ -14,6 +17,30 @@ logger = logging.getLogger(__name__)
 class HomeAssistantClient:
     """Thin async client for the HA REST API."""
 
+    def __init__(self):
+        self._client: Optional[httpx.AsyncClient] = None
+        # Track the settings key used to create the current client so we can
+        # detect when ha_url or ha_token changes and recreate the client.
+        self._client_settings_key: Optional[str] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return a shared httpx.AsyncClient, recreating if settings changed."""
+        import asyncio
+        settings = get_settings()
+        settings_key = f"{settings.get('ha_url')}:{settings.get('ha_token')}"
+        if self._client is None or self._client.is_closed or self._client_settings_key != settings_key:
+            if self._client and not self._client.is_closed:
+                # Schedule close on the running event loop to avoid leaking the
+                # connection pool when settings change (ha_url / ha_token).
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self._client.aclose())
+                except Exception:
+                    pass  # No running loop (e.g. during tests) — let GC handle it
+            self._client = httpx.AsyncClient(timeout=10)
+            self._client_settings_key = settings_key
+        return self._client
+
     def _headers(self) -> dict:
         settings = get_settings()
         return {"Authorization": f"Bearer {settings['ha_token']}"}
@@ -25,13 +52,13 @@ class HomeAssistantClient:
     async def get_state(self, entity_id: str) -> Optional[str]:
         """Return the state string for an entity, or None on error."""
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{self._base_url()}/api/states/{entity_id}",
-                    headers=self._headers(),
-                )
-                resp.raise_for_status()
-                return resp.json().get("state")
+            client = self._get_client()
+            resp = await client.get(
+                f"{self._base_url()}/api/states/{entity_id}",
+                headers=self._headers(),
+            )
+            resp.raise_for_status()
+            return resp.json().get("state")
         except Exception as e:
             logger.warning(f"HA get_state({entity_id}) failed: {e}")
             return None
@@ -59,6 +86,14 @@ class HomeAssistantClient:
     async def get_solar_forecast_today(self) -> Optional[float]:
         settings = get_settings()
         return await self.get_state_float(settings["ha_entity_solar_forecast_today"])
+
+    async def get_solar_forecast_1hr(self) -> Optional[float]:
+        """Return the Solcast 1-hour-ahead solar forecast in kW, or None if unavailable."""
+        settings = get_settings()
+        entity_id = settings.get("ha_entity_solar_forecast_1hr")
+        if not entity_id:
+            return None
+        return await self.get_state_float(entity_id)
 
     async def get_charge_rate(self) -> Optional[float]:
         """Return the live BMS charge rate in kW, or None if unavailable."""
@@ -88,14 +123,14 @@ class HomeAssistantClient:
         settings = get_settings()
         entity_id = settings["ha_entity_battery_mode"]
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    f"{self._base_url()}/api/services/select/select_option",
-                    headers=self._headers(),
-                    json={"entity_id": entity_id, "option": mode},
-                )
-                resp.raise_for_status()
-                return True
+            client = self._get_client()
+            resp = await client.post(
+                f"{self._base_url()}/api/services/select/select_option",
+                headers=self._headers(),
+                json={"entity_id": entity_id, "option": mode},
+            )
+            resp.raise_for_status()
+            return True
         except Exception as e:
             logger.error(f"HA set_battery_mode({mode}) failed: {e}")
             return False
@@ -105,14 +140,14 @@ class HomeAssistantClient:
         settings = get_settings()
         entity_id = settings["ha_entity_discharge_current"]
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    f"{self._base_url()}/api/services/number/set_value",
-                    headers=self._headers(),
-                    json={"entity_id": entity_id, "value": str(amps)},
-                )
-                resp.raise_for_status()
-                return True
+            client = self._get_client()
+            resp = await client.post(
+                f"{self._base_url()}/api/services/number/set_value",
+                headers=self._headers(),
+                json={"entity_id": entity_id, "value": str(amps)},
+            )
+            resp.raise_for_status()
+            return True
         except Exception as e:
             logger.error(f"HA set_discharge_current({amps}) failed: {e}")
             return False
@@ -121,14 +156,14 @@ class HomeAssistantClient:
         """Turn a switch on or off."""
         service = "turn_on" if state else "turn_off"
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    f"{self._base_url()}/api/services/switch/{service}",
-                    headers=self._headers(),
-                    json={"entity_id": entity_id},
-                )
-                resp.raise_for_status()
-                return True
+            client = self._get_client()
+            resp = await client.post(
+                f"{self._base_url()}/api/services/switch/{service}",
+                headers=self._headers(),
+                json={"entity_id": entity_id},
+            )
+            resp.raise_for_status()
+            return True
         except Exception as e:
             logger.error(f"HA set_switch({entity_id}, {state}) failed: {e}")
             return False
@@ -136,13 +171,13 @@ class HomeAssistantClient:
     async def test_connection(self) -> dict:
         """Test HA connection. Returns {success, message}."""
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{self._base_url()}/api/",
-                    headers=self._headers(),
-                )
-                resp.raise_for_status()
-                return {"success": True, "message": "Connected to Home Assistant"}
+            client = self._get_client()
+            resp = await client.get(
+                f"{self._base_url()}/api/",
+                headers=self._headers(),
+            )
+            resp.raise_for_status()
+            return {"success": True, "message": "Connected to Home Assistant"}
         except Exception as e:
             return {"success": False, "message": str(e)}
 

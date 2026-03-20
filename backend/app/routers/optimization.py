@@ -24,7 +24,7 @@ def get_current_recommendation(db: Session = Depends(get_db)):
         .first()
     )
     if not result:
-        return {"id": 0, "timestamp": datetime.now(), "optimization_status": "no_data"}
+        return {"id": 0, "timestamp": datetime.utcnow(), "optimization_status": "no_data"}
     return result
 
 

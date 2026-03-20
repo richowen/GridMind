@@ -17,7 +17,7 @@ class OptimizationResultOut(BaseModel):
     optimization_time_ms: Optional[float] = None
     objective_value: Optional[float] = None
     decision_reason: Optional[str] = None
-    next_action_time: Optional[datetime] = None
+    next_action_time: Optional[datetime] = None  # Next scheduled optimization run
 
     model_config = {"from_attributes": True}
 
@@ -27,13 +27,12 @@ class SystemStateOut(BaseModel):
     timestamp: datetime
     battery_soc: Optional[float] = None
     battery_mode: Optional[str] = None
-    battery_discharge_current: Optional[int] = None
     solar_power_kw: Optional[float] = None
     solar_forecast_today_kwh: Optional[float] = None
-    solar_forecast_next_hour_kw: Optional[float] = None
+    solar_forecast_next_hour_kw: Optional[float] = None  # From Solcast 1hr forecast
     current_price_pence: Optional[float] = None
-    immersion_main_on: Optional[bool] = None
-    immersion_lucy_on: Optional[bool] = None
+    # Note: immersion_main_on / immersion_lucy_on removed — per-device state is
+    # logged to InfluxDB immersion_states measurement instead.
 
     model_config = {"from_attributes": True}
 
@@ -42,9 +41,9 @@ class CurrentStateOut(BaseModel):
     """Combined live state for the dashboard."""
     battery_soc: Optional[float] = None
     battery_mode: Optional[str] = None
-    battery_discharge_current: Optional[int] = None
     solar_power_kw: Optional[float] = None
     solar_forecast_today_kwh: Optional[float] = None
+    solar_forecast_next_hour_kw: Optional[float] = None
     current_price_pence: Optional[float] = None
     price_classification: Optional[str] = None
     recommended_mode: Optional[str] = None

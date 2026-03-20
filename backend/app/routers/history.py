@@ -21,7 +21,8 @@ def get_recommendation_history(
     db: Session = Depends(get_db),
 ):
     """Return optimization decision history for the last N hours."""
-    since = datetime.now() - timedelta(hours=hours)
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
+    since = datetime.utcnow() - timedelta(hours=hours)
     return (
         db.query(OptimizationResult)
         .filter(OptimizationResult.timestamp >= since)
@@ -38,7 +39,8 @@ def get_state_history(
     db: Session = Depends(get_db),
 ):
     """Return system state history for the last N hours."""
-    since = datetime.now() - timedelta(hours=hours)
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
+    since = datetime.utcnow() - timedelta(hours=hours)
     return (
         db.query(SystemState)
         .filter(SystemState.timestamp >= since)
@@ -56,7 +58,8 @@ def get_action_history(
     db: Session = Depends(get_db),
 ):
     """Return HA action audit log for the last N hours."""
-    since = datetime.now() - timedelta(hours=hours)
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
+    since = datetime.utcnow() - timedelta(hours=hours)
     query = db.query(SystemAction).filter(SystemAction.timestamp >= since)
     if action_type:
         query = query.filter(SystemAction.action_type == action_type)
@@ -80,7 +83,8 @@ def get_action_history(
 @router.get("/stats/daily")
 def get_daily_stats(db: Session = Depends(get_db)):
     """Return summary statistics for today."""
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     actions_today = db.query(SystemAction).filter(SystemAction.timestamp >= today).count()
     decisions_today = db.query(OptimizationResult).filter(OptimizationResult.timestamp >= today).count()
     return {

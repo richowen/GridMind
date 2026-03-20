@@ -7,13 +7,14 @@ import type { LiveState } from '@/types/domain'
 const INITIAL_STATE: LiveState = {
   battery_soc: null,
   battery_mode: null,
-  battery_discharge_current: null,
   solar_power_kw: null,
   solar_forecast_today_kwh: null,
+  solar_forecast_next_hour_kw: null,
   current_price_pence: null,
   price_classification: null,
   recommended_mode: null,
   decision_reason: null,
+  live_charge_rate_kw: null,
   last_updated: null,
 }
 

@@ -1,6 +1,6 @@
 # GridMind — Unraid Deployment
 
-GridMind uses your **existing** MariaDB and InfluxDB instances on Unraid. No bundled databases — just the two GridMind containers.
+GridMind uses your **existing** MariaDB and InfluxDB instances on Unraid. No bundled databases — just the two GridMind containers managed via the Unraid Docker GUI.
 
 ---
 
@@ -9,9 +9,9 @@ GridMind uses your **existing** MariaDB and InfluxDB instances on Unraid. No bun
 Before deploying, ensure you have:
 
 1. **MariaDB** running on Unraid at `192.168.1.2:3306`
-   - Create a database and user for GridMind. Choose a password and use it in **both** the SQL below and your `.env` file — they must match:
+   - Create a database and user for GridMind. Choose a password and use it in **both** the SQL below and the container's `DB_PASSWORD` variable — they must match:
      ```sql
-     -- Replace 'your_secure_password' with the same value you will put in DB_PASSWORD in your .env
+     -- Replace 'your_secure_password' with the value you will set in DB_PASSWORD
      CREATE DATABASE gridmind CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
      CREATE USER 'gridmind'@'%' IDENTIFIED BY 'your_secure_password';
      GRANT ALL PRIVILEGES ON gridmind.* TO 'gridmind'@'%';
@@ -29,49 +29,9 @@ Before deploying, ensure you have:
 
 ---
 
-## Option A — Compose Manager (Recommended)
+## Deployment — Individual Container Templates
 
-Uses the [Compose Manager](https://forums.unraid.net/topic/114415-plugin-docker-compose-manager/) Unraid plugin.
-
-### Steps
-
-1. Install the **Compose Manager** plugin from Unraid Community Applications.
-
-2. Create the appdata directory and copy the required files:
-   ```bash
-   mkdir -p /mnt/user/appdata/gridmind
-   cp /path/to/GridMind/.env.example /mnt/user/appdata/gridmind/.env
-   cp /path/to/GridMind/unraid/nginx.conf /mnt/user/appdata/gridmind/nginx.conf
-   ```
-
-3. Edit `/mnt/user/appdata/gridmind/.env` — set `DB_PASSWORD` to the **same password** you used in the `CREATE USER` SQL above:
-   ```env
-   DB_HOST=192.168.1.2
-   DB_PORT=3306
-   DB_USER=gridmind
-   DB_PASSWORD=your_secure_password   # ← must match the SQL password exactly
-   DB_NAME=gridmind
-   ```
-
-4. Copy `unraid/docker-compose.yml` to `/mnt/user/appdata/gridmind/docker-compose.yml`.
-
-5. In Unraid → **Docker** → **Compose Manager**, click **Add New Stack**, point it at `/mnt/user/appdata/gridmind/docker-compose.yml`, and start it.
-
-6. Open the GridMind UI at `http://192.168.1.76:3009` and configure Home Assistant, Octopus Energy, and InfluxDB settings via the **Settings** page.
-
-### Access
-
-| Service  | Address                          | Purpose                  |
-|----------|----------------------------------|--------------------------|
-| Frontend | `http://192.168.1.76:3009`       | Web dashboard            |
-| Backend  | `http://192.168.1.75:8009`       | API + WebSocket          |
-| API Docs | `http://192.168.1.75:8009/docs`  | FastAPI Swagger UI       |
-
----
-
-## Option B — Individual Container Templates (CA)
-
-Use the XML templates to manage each container separately via the Unraid Docker UI.
+Manage each container separately via the Unraid Docker UI using the provided XML templates.
 
 > **Important:** Both containers must be on the `br0` network with their static IPs. The frontend nginx proxy resolves the backend by hostname `backend` — this works because the `--add-host=backend:192.168.1.75` flag is set in the template's ExtraParams.
 
@@ -92,30 +52,28 @@ Use the XML templates to manage each container separately via the Unraid Docker 
 
 2. Copy `unraid/nginx.conf` from the repo to `/mnt/user/appdata/gridmind/nginx.conf`.
 
-3. Start **gridmind-backend** first — set `DB_HOST` to `192.168.1.2` and fill in `DB_PASSWORD` (same password as the `CREATE USER` SQL). Then start **gridmind-frontend**.
+3. Start **gridmind-backend** first — set `DB_HOST` to `192.168.1.2` and fill in `DB_PASSWORD` (same password as the `CREATE USER` SQL above). Then start **gridmind-frontend**.
 
 4. Both containers will be assigned their static IPs on `br0` automatically from the template defaults.
+
+### Access
+
+| Service  | Address                          | Purpose                  |
+|----------|----------------------------------|--------------------------|
+| Frontend | `http://192.168.1.76:3009`       | Web dashboard            |
+| Backend  | `http://192.168.1.75:8009`       | API + WebSocket          |
+| API Docs | `http://192.168.1.75:8009/docs`  | FastAPI Swagger UI       |
 
 ---
 
 ## Updating
 
-With Compose Manager, click **Pull** then **Up** to pull the latest `ghcr.io` images and restart.
-
-With individual templates, use Unraid's **Check for Updates** button on each container.
+Use Unraid's **Check for Updates** button on each container to pull the latest `ghcr.io` images and restart.
 
 ---
 
 ## Networking notes
 
-The compose file attaches to Unraid's **existing** `br0` ipvlan network using `external: true`:
+Both containers are placed on Unraid's `br0` macvlan network with static IPs. The static IPs (`192.168.1.75` and `192.168.1.76`) must be outside your router's DHCP range to avoid conflicts.
 
-```yaml
-networks:
-  br0:
-    external: true
-```
-
-This means Compose does **not** create a new network — it joins the one Unraid already manages. This avoids the `pool overlaps` error and ensures GridMind is on the same `192.168.1.0/24` subnet as InfluxDB.
-
-The static IPs (`192.168.1.75` and `192.168.1.76`) must be outside your router's DHCP range to avoid conflicts.
+The frontend nginx config (mounted from `/mnt/user/appdata/gridmind/nginx.conf`) proxies all `/api/` and `/ws` traffic to the backend at `backend:8009`, resolved via the `--add-host` flag in the frontend template.

@@ -121,6 +121,9 @@ class BatteryOptimizer:
         assumed_load_kw     = get_setting_float("assumed_load_kw", 2.0)
         # FIX (5): Configurable Force Charge decision threshold
         force_charge_threshold_kw = get_setting_float("force_charge_threshold_kw", 0.5)
+        # Independent Force Discharge threshold and export guard (Issue 21)
+        force_discharge_threshold_kw = get_setting_float("force_discharge_threshold_kw", force_charge_threshold_kw)
+        force_discharge_export_min_kw = get_setting_float("force_discharge_export_min_kw", 0.05)
         # FIX (6): Use live battery voltage when available; fall back to configurable setting
         battery_voltage_v = (
             inp.live_battery_voltage_v
@@ -243,10 +246,7 @@ class BatteryOptimizer:
                 f"LP optimal: charging {charge_0:.2f} kW at {period_prices[0]:.1f}p "
                 f"(threshold {force_charge_threshold_kw} kW)"
             )
-        # Intentionally reuses force_charge_threshold_kw as the discharge trigger threshold.
-        # A separate force_discharge_threshold_kw setting can be added if independent tuning
-        # is needed in future.
-        elif discharge_0 >= force_charge_threshold_kw and export_0 > 0.05:
+        elif discharge_0 >= force_discharge_threshold_kw and export_0 > force_discharge_export_min_kw:
             # LP wants to actively discharge to grid — use Force Discharge
             mode = "Force Discharge"
             reason = (

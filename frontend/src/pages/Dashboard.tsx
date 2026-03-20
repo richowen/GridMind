@@ -41,7 +41,6 @@ export default function Dashboard() {
         <ModeCard
           mode={state.recommended_mode}
           reason={state.decision_reason}
-          dischargeAmps={state.battery_discharge_current}
         />
       </div>
 

@@ -1,11 +1,14 @@
 """InfluxDB 2.x client for time-series logging. Backward-compatible with existing measurements.
-Depends on settings_cache for connection details. All writes are optional (influx_enabled setting)."""
+Depends on settings_cache for connection details. All writes are optional (influx_enabled setting).
+
+Uses a persistent InfluxDB client — recreated only when connection settings change — to avoid
+creating a new HTTP connection pool on every write call."""
 
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.core.settings_cache import get_settings
+from app.core.settings_cache import get_settings, get_setting_bool
 
 logger = logging.getLogger(__name__)
 
@@ -13,19 +16,33 @@ logger = logging.getLogger(__name__)
 class InfluxDBClient:
     """Writes metrics to InfluxDB. Silently skips if disabled or unavailable."""
 
+    def __init__(self):
+        self._client = None
+        # Track the settings key used to create the current client so we can
+        # detect when influx_url or influx_token changes and recreate the client.
+        self._client_settings_key: Optional[str] = None
+
     def _get_client(self):
-        """Create an InfluxDB write client from current settings."""
+        """Return a shared InfluxDB write client, recreating if settings changed."""
         from influxdb_client import InfluxDBClient as _Client
         settings = get_settings()
-        return _Client(
-            url=settings["influx_url"],
-            token=settings["influx_token"],
-            org=settings["influx_org"],
-        )
+        settings_key = f"{settings.get('influx_url')}:{settings.get('influx_token')}:{settings.get('influx_org')}"
+        if self._client is None or self._client_settings_key != settings_key:
+            if self._client:
+                try:
+                    self._client.close()
+                except Exception:
+                    pass
+            self._client = _Client(
+                url=settings["influx_url"],
+                token=settings["influx_token"],
+                org=settings["influx_org"],
+            )
+            self._client_settings_key = settings_key
+        return self._client
 
     def _is_enabled(self) -> bool:
-        settings = get_settings()
-        return settings.get("influx_enabled", "true").lower() == "true"
+        return get_setting_bool("influx_enabled", True)
 
     def write_prices(self, prices: list) -> None:
         """Write electricity prices to InfluxDB (existing measurement schema)."""
@@ -33,10 +50,10 @@ class InfluxDBClient:
             return
         try:
             from influxdb_client.client.write_api import SYNCHRONOUS
+            from influxdb_client import Point
             settings = get_settings()
             client = self._get_client()
             write_api = client.write_api(write_options=SYNCHRONOUS)
-            from influxdb_client import Point
             points = []
             for p in prices:
                 point = (
@@ -49,12 +66,11 @@ class InfluxDBClient:
                 )
                 points.append(point)
             write_api.write(bucket=settings["influx_bucket"], record=points)
-            client.close()
         except Exception as e:
             logger.warning(f"InfluxDB write_prices failed: {e}")
 
     def write_system_state(self, state: dict) -> None:
-        """Write system state snapshot (existing measurement schema + new temp fields)."""
+        """Write system state snapshot to InfluxDB."""
         if not self._is_enabled():
             return
         try:
@@ -69,19 +85,43 @@ class InfluxDBClient:
                 .field("battery_soc", state.get("battery_soc"))
                 .field("solar_power_kw", state.get("solar_power_kw"))
                 .field("current_price_pence", state.get("current_price_pence"))
-                .field("immersion_main_on", state.get("immersion_main_on"))
-                .field("immersion_lucy_on", state.get("immersion_lucy_on"))
+                .field("live_charge_rate_kw", state.get("live_charge_rate_kw"))
                 .time(datetime.now(timezone.utc))
             )
-            # New optional temperature fields (additive only)
-            if state.get("temp_main_c") is not None:
-                point = point.field("temp_main_c", state["temp_main_c"])
-            if state.get("temp_lucy_c") is not None:
-                point = point.field("temp_lucy_c", state["temp_lucy_c"])
+            # Optional solar forecast fields
+            if state.get("solar_forecast_today_kwh") is not None:
+                point = point.field("solar_forecast_today_kwh", state["solar_forecast_today_kwh"])
+            if state.get("solar_forecast_next_hour_kw") is not None:
+                point = point.field("solar_forecast_next_hour_kw", state["solar_forecast_next_hour_kw"])
             write_api.write(bucket=settings["influx_bucket"], record=point)
-            client.close()
         except Exception as e:
             logger.warning(f"InfluxDB write_system_state failed: {e}")
+
+    def write_immersion_state(self, device_name: str, is_on: bool, temp_c: Optional[float] = None) -> None:
+        """Write per-device immersion state snapshot to InfluxDB.
+
+        Replaces the old hardcoded immersion_main_on / immersion_lucy_on fields
+        with a generic per-device measurement keyed by device_name tag.
+        """
+        if not self._is_enabled():
+            return
+        try:
+            from influxdb_client.client.write_api import SYNCHRONOUS
+            from influxdb_client import Point
+            settings = get_settings()
+            client = self._get_client()
+            write_api = client.write_api(write_options=SYNCHRONOUS)
+            point = (
+                Point("immersion_state")
+                .tag("device_name", device_name)
+                .field("is_on", is_on)
+                .time(datetime.now(timezone.utc))
+            )
+            if temp_c is not None:
+                point = point.field("temp_c", temp_c)
+            write_api.write(bucket=settings["influx_bucket"], record=point)
+        except Exception as e:
+            logger.warning(f"InfluxDB write_immersion_state({device_name}) failed: {e}")
 
     def write_immersion_action(self, device_name: str, decision: dict) -> None:
         """Write immersion action event (new measurement)."""
@@ -103,7 +143,6 @@ class InfluxDBClient:
                 .time(datetime.now(timezone.utc))
             )
             write_api.write(bucket=settings["influx_bucket"], record=point)
-            client.close()
         except Exception as e:
             logger.warning(f"InfluxDB write_immersion_action failed: {e}")
 
@@ -112,7 +151,6 @@ class InfluxDBClient:
         try:
             client = self._get_client()
             health = client.health()
-            client.close()
             return {"success": health.status == "pass", "message": f"InfluxDB status: {health.status}"}
         except Exception as e:
             return {"success": False, "message": str(e)}

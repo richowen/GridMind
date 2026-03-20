@@ -5,13 +5,14 @@ export type PriceClassification = 'negative' | 'cheap' | 'normal' | 'expensive'
 export interface LiveState {
   battery_soc: number | null
   battery_mode: string | null
-  battery_discharge_current: number | null
   solar_power_kw: number | null
   solar_forecast_today_kwh: number | null
+  solar_forecast_next_hour_kw: number | null
   current_price_pence: number | null
   price_classification: PriceClassification | null
   recommended_mode: string | null
   decision_reason: string | null
+  live_charge_rate_kw: number | null
   last_updated: string | null
 }
 
@@ -21,10 +22,13 @@ export type WSMessage =
   | { type: 'prices_updated'; data: unknown[] }
   | { type: 'immersion_action'; data: unknown }
   | { type: 'ping'; data: null }
-  | { type: 'pong' }
 
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
+/**
+ * Day names using Python weekday() convention: 0=Monday, 6=Sunday.
+ * This matches the backend days_of_week storage format.
+ */
 export const DAY_NAMES: Record<DayOfWeek, string> = {
   0: 'Mon',
   1: 'Tue',
@@ -52,14 +56,6 @@ export function getPriceColor(classification: PriceClassification | null): strin
   }
 }
 
-export function classifyPrice(
-  pence: number,
-  negThreshold = 0,
-  cheapThreshold = 10,
-  expThreshold = 25,
-): PriceClassification {
-  if (pence < negThreshold) return 'negative'
-  if (pence < cheapThreshold) return 'cheap'
-  if (pence > expThreshold) return 'expensive'
-  return 'normal'
-}
+// Note: classifyPrice() removed — use the `classification` field returned by the
+// backend on every price record instead. Frontend thresholds would diverge from
+// the DB settings that users configure in the Settings page.

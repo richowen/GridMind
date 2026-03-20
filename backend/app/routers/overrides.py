@@ -22,10 +22,12 @@ def set_manual_override(body: ManualOverrideCreate, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Device not found")
 
     # Clear any existing active override for this device
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
+    now = datetime.utcnow()
     db.query(ManualOverride).filter(
         ManualOverride.immersion_id == body.immersion_id,
         ManualOverride.is_active == True,
-    ).update({"is_active": False, "cleared_at": datetime.now(), "cleared_by": "new_override"})
+    ).update({"is_active": False, "cleared_at": now, "cleared_by": "new_override"})
 
     override = ManualOverride(
         immersion_id=body.immersion_id,
@@ -33,7 +35,7 @@ def set_manual_override(body: ManualOverrideCreate, db: Session = Depends(get_db
         is_active=True,
         desired_state=body.desired_state,
         source="user",
-        expires_at=datetime.now() + timedelta(minutes=body.duration_minutes),
+        expires_at=now + timedelta(minutes=body.duration_minutes),
     )
     db.add(override)
     db.commit()
@@ -46,7 +48,8 @@ def get_override_status(db: Session = Depends(get_db)):
     """Return override status for all devices."""
     devices = db.query(ImmersionDevice).all()
     results = []
-    now = datetime.now()
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
+    now = datetime.utcnow()
     for device in devices:
         active = (
             db.query(ManualOverride)
@@ -73,10 +76,11 @@ def get_override_status(db: Session = Depends(get_db)):
 @router.post("/manual/clear/{device_id}")
 def clear_override(device_id: int, db: Session = Depends(get_db)):
     """Clear active override for a specific device."""
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
     updated = db.query(ManualOverride).filter(
         ManualOverride.immersion_id == device_id,
         ManualOverride.is_active == True,
-    ).update({"is_active": False, "cleared_at": datetime.now(), "cleared_by": "user"})
+    ).update({"is_active": False, "cleared_at": datetime.utcnow(), "cleared_by": "user"})
     db.commit()
     return {"cleared": updated}
 
@@ -84,8 +88,9 @@ def clear_override(device_id: int, db: Session = Depends(get_db)):
 @router.post("/manual/clear-all")
 def clear_all_overrides(db: Session = Depends(get_db)):
     """Clear all active overrides."""
+    # DB stores naive UTC datetimes — use utcnow() for comparisons
     updated = db.query(ManualOverride).filter(
         ManualOverride.is_active == True,
-    ).update({"is_active": False, "cleared_at": datetime.now(), "cleared_by": "user"})
+    ).update({"is_active": False, "cleared_at": datetime.utcnow(), "cleared_by": "user"})
     db.commit()
     return {"cleared": updated}
