@@ -199,19 +199,22 @@ class BatteryOptimizer:
             # Charge adds energy at round-trip efficiency; discharge removes raw energy.
             # Using one-way efficiency per direction: sqrt(round_trip) each way.
             # Simpler conservative model: charge * eff, discharge / eff.
+            # PuLP does not support dividing an LpVariable by a scalar (no __truediv__).
+            # Rewrite discharge / efficiency as discharge * (1 / efficiency).
+            inv_eff = 1.0 / efficiency
             if t == 0:
                 prob += (
                     soc[t]
                     == initial_soc
                     + charge[t] * efficiency * 0.5
-                    - discharge[t] / efficiency * 0.5
+                    - discharge[t] * inv_eff * 0.5
                 )
             else:
                 prob += (
                     soc[t]
                     == soc[t - 1]
                     + charge[t] * efficiency * 0.5
-                    - discharge[t] / efficiency * 0.5
+                    - discharge[t] * inv_eff * 0.5
                 )
 
         # ── Solve ─────────────────────────────────────────────────────────────
