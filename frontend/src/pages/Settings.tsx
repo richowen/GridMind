@@ -12,6 +12,7 @@ const SECTION_LABELS: Record<string, string> = {
   octopus: 'Octopus Energy',
   prices: 'Price Classification',
   optimization: 'Optimization',
+  immersion: 'Immersion Control',
   influxdb: 'InfluxDB (optional)',
   system: 'System',
 }

@@ -46,9 +46,12 @@ class WebSocketManager:
         # Send complete current state immediately on connect so the browser
         # doesn't show null values until the next 5-minute optimization tick.
         try:
-            from app.core.settings_cache import get_setting_float
+            from datetime import datetime
+            from app.core.settings_cache import get_settings
             from app.database import SessionLocal
             from app.models.optimization import OptimizationResult, SystemState
+            from app.models.prices import ElectricityPrice
+            from app.services.octopus_energy import classify_prices
 
             db = SessionLocal()
             try:
@@ -64,21 +67,30 @@ class WebSocketManager:
                 )
 
                 if latest_opt:
-                    # Compute price classification from DB thresholds
+                    # Compute price classification using the same percentage-based logic
+                    # as optimization_loop — keeps initial state consistent with broadcasts.
                     price_classification = None
                     if latest_opt.current_price_pence is not None:
-                        neg_thresh = get_setting_float("price_negative_threshold", 0.0)
-                        cheap_thresh = get_setting_float("price_cheap_threshold", 10.0)
-                        exp_thresh = get_setting_float("price_expensive_threshold", 25.0)
-                        p = latest_opt.current_price_pence
-                        if p < neg_thresh:
-                            price_classification = "negative"
-                        elif p < cheap_thresh:
-                            price_classification = "cheap"
-                        elif p > exp_thresh:
-                            price_classification = "expensive"
-                        else:
-                            price_classification = "normal"
+                        now = datetime.utcnow()
+                        price_rows = (
+                            db.query(ElectricityPrice)
+                            .filter(ElectricityPrice.valid_to >= now)
+                            .order_by(ElectricityPrice.valid_from)
+                            .limit(96)
+                            .all()
+                        )
+                        if price_rows:
+                            batch = [{"price_pence": p.price_pence} for p in price_rows]
+                            classify_prices(batch, get_settings())
+                            current_idx = next(
+                                (
+                                    i for i, p in enumerate(price_rows)
+                                    if p.valid_from <= now <= p.valid_to
+                                ),
+                                None,
+                            )
+                            if current_idx is not None:
+                                price_classification = batch[current_idx].get("classification")
 
                     await websocket.send_json({
                         "type": "state",

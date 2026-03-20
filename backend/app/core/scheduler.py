@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.core.settings_cache import get_setting_int, get_setting_float
+from app.core.settings_cache import get_setting_int
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ async def optimization_loop():
     try:
         from app.core.optimizer import OptimizationInput, run_optimization
         from app.core.action_executor import action_executor
-        from app.core.settings_cache import get_setting, get_setting_float as _get_float
+        from app.core.settings_cache import get_setting
         from app.database import SessionLocal
         from app.models.optimization import OptimizationResult, SystemState
         from app.models.prices import ElectricityPrice
@@ -202,20 +202,22 @@ async def optimization_loop():
         finally:
             db.close()
 
-        # Compute price classification from DB thresholds
+        # Compute price classification using the same percentage-based logic as
+        # octopus_energy.classify_prices — relative to the fetched batch's min/max range.
         price_classification = None
-        if current_price is not None:
-            neg_thresh = get_setting_float("price_negative_threshold", 0.0)
-            cheap_thresh = get_setting_float("price_cheap_threshold", 10.0)
-            exp_thresh = get_setting_float("price_expensive_threshold", 25.0)
-            if current_price < neg_thresh:
-                price_classification = "negative"
-            elif current_price < cheap_thresh:
-                price_classification = "cheap"
-            elif current_price > exp_thresh:
-                price_classification = "expensive"
-            else:
-                price_classification = "normal"
+        if current_price is not None and prices_rows:
+            from app.services.octopus_energy import classify_prices
+            from app.core.settings_cache import get_settings as _get_all_settings
+            _all_settings = _get_all_settings()
+            _batch = [{"price_pence": p.price_pence} for p in prices_rows]
+            classify_prices(_batch, _all_settings)
+            # Find the classification for the current period
+            _current_row = next(
+                (p for p in prices_rows if p.valid_from <= now <= p.valid_to), None
+            )
+            if _current_row is not None:
+                _idx = prices_rows.index(_current_row)
+                price_classification = _batch[_idx].get("classification")
 
         # Push to WebSocket clients
         await manager.broadcast({
