@@ -2,13 +2,69 @@
 Every job wraps its body in try/except so HA unavailability never crashes the scheduler."""
 
 import logging
+import math
+import zoneinfo
 from datetime import datetime, timezone
+from typing import List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.core.settings_cache import get_setting_int, get_setting_float
 
 logger = logging.getLogger(__name__)
+
+
+def _build_solar_forecast_profile(
+    prices,
+    solar_now_kw: float,
+    solar_forecast_remaining_kwh: Optional[float],
+) -> List[float]:
+    """Build a per-period solar forecast profile (kW per half-hour slot).
+
+    Strategy:
+    - If we have a remaining-today forecast (kWh), distribute it across future
+      daylight periods using a half-sine shape peaking at solar_now_kw.
+    - If no forecast is available, use solar_now_kw as a constant fallback.
+
+    The half-sine is anchored so that the integral equals solar_forecast_remaining_kwh.
+    Periods after sunset (price period start hour >= 20 or < 5) are forced to 0.
+    """
+    n = len(prices)
+    profile = [solar_now_kw] * n  # default: constant
+
+    if solar_forecast_remaining_kwh is None or solar_forecast_remaining_kwh <= 0:
+        return profile
+
+    # Identify daylight slots (5:00–20:00 Europe/London local time).
+    # DB datetimes are naive UTC; attach UTC tzinfo before converting so that
+    # BST (UTC+1, late March–October) is handled correctly.
+    _LOCAL_TZ = zoneinfo.ZoneInfo("Europe/London")
+    daylight_indices = []
+    for i, p in enumerate(prices):
+        local_dt = p.valid_from.replace(tzinfo=timezone.utc).astimezone(_LOCAL_TZ)
+        hour = local_dt.hour
+        if 5 <= hour < 20:
+            daylight_indices.append(i)
+
+    if not daylight_indices:
+        return profile
+
+    # Half-sine weights over daylight slots.
+    # Use (k+1)/(m+1) so that the first and last slots receive a small positive
+    # weight rather than exactly 0 (which sin(0) and sin(π) would give).
+    m = len(daylight_indices)
+    weights = [math.sin(math.pi * (k + 1) / (m + 1)) for k in range(m)]
+    weight_sum = sum(weights)
+
+    # Each slot is 0.5 hr; total energy = sum(kW * 0.5)
+    # Scale weights so integral = solar_forecast_remaining_kwh
+    scale = solar_forecast_remaining_kwh / (weight_sum * 0.5) if weight_sum > 0 else 0
+
+    result = [0.0] * n
+    for rank, idx in enumerate(daylight_indices):
+        result[idx] = weights[rank] * scale
+
+    return result
 
 scheduler = AsyncIOScheduler()
 
@@ -32,6 +88,10 @@ async def optimization_loop():
         solar = await ha_client.get_solar_power()
         solar_forecast = await ha_client.get_solar_forecast_today()
         battery_mode = await ha_client.get_battery_mode()
+        # Note 1: live BMS charge rate for LP upper-bound cap
+        live_charge_rate = await ha_client.get_charge_rate()
+        # Live battery voltage for accurate kW→amps conversion
+        live_battery_voltage = await ha_client.get_battery_voltage()
 
         # Get upcoming prices from DB
         # DB stores naive UTC datetimes — use utcnow() (naive) for comparisons
@@ -58,10 +118,20 @@ async def optimization_loop():
             for p in prices_rows
         ]
 
+        # Build per-period solar forecast profile from remaining-today kWh
+        solar_profile = _build_solar_forecast_profile(
+            prices=price_periods,
+            solar_now_kw=solar or 0.0,
+            solar_forecast_remaining_kwh=solar_forecast,
+        )
+
         inp = OptimizationInput(
             battery_soc=soc or 50.0,
             solar_power_kw=solar or 0.0,
             prices=price_periods,
+            solar_forecast_profile=solar_profile,
+            live_charge_rate_kw=live_charge_rate,
+            live_battery_voltage_v=live_battery_voltage,
         )
 
         result = await run_optimization(inp)
@@ -126,6 +196,7 @@ async def optimization_loop():
                 "price_classification": price_classification,
                 "recommended_mode": result.recommended_mode,
                 "decision_reason": result.decision_reason,
+                "live_charge_rate_kw": live_charge_rate,
                 "last_updated": datetime.now().isoformat(),
             },
         })
@@ -136,6 +207,7 @@ async def optimization_loop():
             "battery_mode": battery_mode,
             "solar_power_kw": solar,
             "current_price_pence": current_price,
+            "live_charge_rate_kw": live_charge_rate,
         })
 
     except Exception as e:

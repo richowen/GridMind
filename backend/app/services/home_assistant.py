@@ -60,6 +60,18 @@ class HomeAssistantClient:
         settings = get_settings()
         return await self.get_state_float(settings["ha_entity_solar_forecast_today"])
 
+    async def get_charge_rate(self) -> Optional[float]:
+        """Return the live BMS charge rate in kW, or None if unavailable."""
+        settings = get_settings()
+        entity_id = settings.get("ha_entity_charge_rate", "sensor.foxinverter_bms_charge_rate")
+        return await self.get_state_float(entity_id)
+
+    async def get_battery_voltage(self) -> Optional[float]:
+        """Return the live battery voltage in V from the inverter, or None if unavailable."""
+        settings = get_settings()
+        entity_id = settings.get("ha_entity_battery_voltage", "sensor.foxinverter_invbatvolt")
+        return await self.get_state_float(entity_id)
+
     async def get_temperature(self, entity_id: str) -> Optional[float]:
         return await self.get_state_float(entity_id)
 
@@ -72,7 +84,7 @@ class HomeAssistantClient:
         return None
 
     async def set_battery_mode(self, mode: str) -> bool:
-        """Set the Fox inverter work mode (Force Charge / Self Use)."""
+        """Set the Fox inverter work mode (Force Charge / Force Discharge / Self Use)."""
         settings = get_settings()
         entity_id = settings["ha_entity_battery_mode"]
         try:

@@ -44,6 +44,11 @@ services:
     extra_hosts:
       # Allows nginx to resolve 'backend' → backend container's IP on br0
       - "backend:192.168.1.75"
+    environment:
+      # Set these to enable basic auth on the frontend.
+      # Leave unset (or remove) to disable auth entirely.
+      GRIDMIND_USER: ${GRIDMIND_USER:-}
+      GRIDMIND_PASS: ${GRIDMIND_PASS:-}
     volumes:
       # Custom nginx config: listens on 3009, proxies to backend:8009
       - /mnt/user/appdata/gridmind/nginx.conf:/etc/nginx/conf.d/default.conf:ro

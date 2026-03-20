@@ -23,6 +23,11 @@ services:
     container_name: gridmind-frontend
     ports:
       - "3009:80"
+    environment:
+      # Set these to enable basic auth on the frontend.
+      # Leave unset (or remove) to disable auth entirely.
+      - GRIDMIND_USER=${GRIDMIND_USER:-}
+      - GRIDMIND_PASS=${GRIDMIND_PASS:-}
     depends_on:
       - backend
     restart: unless-stopped
