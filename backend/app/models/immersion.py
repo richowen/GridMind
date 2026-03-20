@@ -20,6 +20,9 @@ class ImmersionDevice(Base):
     temp_sensor_entity_id = Column(String(150))
     is_enabled = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
+    # Tracks the last switch state GridMind commanded to HA.
+    # NULL = GridMind has never commanded this device (skip external-change detection).
+    last_commanded_state = Column(Boolean, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

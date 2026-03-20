@@ -92,7 +92,11 @@ class ActionExecutor:
                 )
 
     async def apply_immersion(self, device, decision: ImmersionDecision, db: Optional[Session] = None) -> None:
-        """Apply immersion decision to HA. Only acts if state changes."""
+        """Apply immersion decision to HA. Only acts if state changes.
+
+        After a successful switch command, records last_commanded_state on the device
+        so the scheduler can detect future external (non-GridMind) HA state changes.
+        """
         current_state = await ha_client.get_switch_state(device.switch_entity_id)
 
         if current_state != decision.action:
@@ -118,6 +122,21 @@ class ActionExecutor:
                 "source": decision.source,
                 "reason": decision.reason,
             })
+
+            # Record what GridMind last commanded so the scheduler can detect
+            # future external HA changes (state differs from last_commanded_state).
+            if success:
+                device.last_commanded_state = decision.action
+                if db is not None:
+                    try:
+                        db.flush()
+                    except Exception as e:
+                        logger.warning(f"Could not flush last_commanded_state for {device.name}: {e}")
+                else:
+                    logger.warning(
+                        f"last_commanded_state updated in-memory for {device.name} but no db "
+                        "session provided — change will not be persisted to the database."
+                    )
 
 
 action_executor = ActionExecutor()

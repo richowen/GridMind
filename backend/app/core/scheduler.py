@@ -291,16 +291,24 @@ async def price_refresh():
 
 
 async def immersion_evaluation():
-    """Every 1min: evaluate immersion rules for each enabled device and apply decisions."""
+    """Every 1min: evaluate immersion rules for each enabled device and apply decisions.
+
+    External change detection: if the current HA switch state differs from the last
+    state GridMind commanded (last_commanded_state), and no manual override is active,
+    GridMind infers the switch was changed externally (e.g. via the HA dashboard) and
+    auto-creates a ManualOverride so it does not immediately revert the change.
+    """
     try:
         from app.core.rules_engine import rules_engine, SystemState as RulesState
         from app.core.action_executor import action_executor
+        from app.core.settings_cache import get_setting_int
         from app.database import SessionLocal
         from app.models.immersion import ImmersionDevice
         from app.models.overrides import ManualOverride
         from app.models.prices import ElectricityPrice
         from app.services.home_assistant import ha_client
         from app.services.influxdb import influx_client
+        from app.websocket.manager import manager
 
         db = SessionLocal()
         try:
@@ -330,6 +338,9 @@ async def immersion_evaluation():
                 if device.temp_sensor_entity_id:
                     temp = await ha_client.get_temperature(device.temp_sensor_entity_id)
 
+                # Read current HA switch state once — reused for detection and InfluxDB snapshot
+                current_switch_state = await ha_client.get_switch_state(device.switch_entity_id)
+
                 # Get active override — compare expires_at (naive UTC) against pre-computed now
                 active_override = (
                     db.query(ManualOverride)
@@ -340,6 +351,72 @@ async def immersion_evaluation():
                     )
                     .first()
                 )
+
+                # ── External change detection ─────────────────────────────────────────
+                # Only check when there is no active override (if an override is already
+                # active, GridMind is intentionally holding the state — no detection needed).
+                # Skip detection when last_commanded_state is NULL (first boot / never commanded).
+                if (
+                    active_override is None
+                    and device.last_commanded_state is not None
+                    and current_switch_state is not None
+                    and current_switch_state != device.last_commanded_state
+                ):
+                    auto_duration = get_setting_int("manual_override_auto_duration_minutes", 120)
+                    state_label = "ON" if current_switch_state else "OFF"
+                    logger.info(
+                        f"External HA change detected for {device.name}: "
+                        f"switch is {state_label} but GridMind last commanded "
+                        f"{'ON' if device.last_commanded_state else 'OFF'}. "
+                        f"Auto-creating {auto_duration}min override."
+                    )
+
+                    # Clear any stale (expired) overrides for this device first
+                    db.query(ManualOverride).filter(
+                        ManualOverride.immersion_id == device.id,
+                        ManualOverride.is_active == True,
+                    ).update({"is_active": False, "cleared_at": now, "cleared_by": "auto_detection"})
+
+                    active_override = ManualOverride(
+                        immersion_id=device.id,
+                        immersion_name=device.name,
+                        is_active=True,
+                        desired_state=current_switch_state,
+                        source="ha_external",
+                        expires_at=now + timedelta(minutes=auto_duration),
+                    )
+                    db.add(active_override)
+
+                    # Update last_commanded_state immediately so the next evaluation
+                    # cycle does not re-detect the same change as another external event.
+                    device.last_commanded_state = current_switch_state
+                    try:
+                        db.flush()
+                    except Exception as flush_err:
+                        logger.warning(
+                            f"Could not flush auto-override for {device.name}: {flush_err}. "
+                            "Skipping this device for this cycle."
+                        )
+                        db.rollback()
+                        continue
+
+                    # Notify connected frontend clients in real-time
+                    await manager.broadcast({
+                        "type": "manual_override_detected",
+                        "data": {
+                            "immersion_id": device.id,
+                            "immersion_name": device.name,
+                            "desired_state": current_switch_state,
+                            "source": "ha_external",
+                            "duration_minutes": auto_duration,
+                            "expires_at": active_override.expires_at.isoformat(),
+                            "message": (
+                                f"{device.display_name} was turned {state_label} manually in "
+                                f"Home Assistant — auto-override created for {auto_duration} minutes."
+                            ),
+                        },
+                    })
+                # ─────────────────────────────────────────────────────────────────────
 
                 decision = rules_engine.evaluate(
                     device=device,
@@ -352,15 +429,22 @@ async def immersion_evaluation():
 
                 await action_executor.apply_immersion(device, decision, db=db)
 
-                # Write per-device immersion state snapshot to InfluxDB
-                current_switch_state = await ha_client.get_switch_state(device.switch_entity_id)
+                # Write per-device immersion state snapshot to InfluxDB.
+                # Use the decision outcome as the post-action state rather than
+                # current_switch_state (which was fetched before apply_immersion ran
+                # and may now be stale if GridMind just changed the switch).
+                post_action_state = (
+                    decision.action
+                    if decision.action is not None
+                    else current_switch_state
+                )
                 influx_client.write_immersion_state(
                     device_name=device.name,
-                    is_on=bool(current_switch_state),
+                    is_on=bool(post_action_state),
                     temp_c=temp,
                 )
 
-            # Commit any action log entries added during this cycle
+            # Commit any action log entries and override records added during this cycle
             db.commit()
 
         finally:

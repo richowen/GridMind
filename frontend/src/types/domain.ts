@@ -16,11 +16,22 @@ export interface LiveState {
   last_updated: string | null
 }
 
+export interface ManualOverrideDetectedData {
+  immersion_id: number
+  immersion_name: string
+  desired_state: boolean
+  source: string
+  duration_minutes: number
+  expires_at: string
+  message: string
+}
+
 export type WSMessage =
   | { type: 'state'; data: LiveState }
   | { type: 'optimization_result'; data: LiveState }
   | { type: 'prices_updated'; data: unknown[] }
   | { type: 'immersion_action'; data: unknown }
+  | { type: 'manual_override_detected'; data: ManualOverrideDetectedData }
   | { type: 'ping'; data: null }
 
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6

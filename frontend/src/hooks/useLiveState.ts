@@ -29,5 +29,7 @@ export function useLiveState() {
     }
   }, [lastMessage])
 
-  return { state, connected }
+  // Expose lastMessage so consumers (e.g. Controls) can react to any WS event
+  // without opening a second WebSocket connection via useWebSocket directly.
+  return { state, connected, lastMessage }
 }
