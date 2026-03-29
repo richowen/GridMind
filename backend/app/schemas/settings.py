@@ -3,17 +3,16 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
+from app.schemas.base import UTCModel
 
 
-class SettingOut(BaseModel):
+class SettingOut(UTCModel):
     key: str
     value: str
     value_type: str
     category: str
     description: Optional[str] = None
     updated_at: Optional[datetime] = None
-
-    model_config = {"from_attributes": True}
 
 
 class SettingUpdate(BaseModel):

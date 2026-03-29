@@ -1,6 +1,6 @@
 """History router: optimization history, system state history, and action audit log."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.actions import SystemAction
 from app.models.optimization import OptimizationResult, SystemState
 from app.schemas.optimization import OptimizationResultOut, SystemStateOut
+from app.utils import utcnow
 
 router = APIRouter(tags=["history"])
 
@@ -22,7 +23,7 @@ def get_recommendation_history(
 ):
     """Return optimization decision history for the last N hours."""
     # DB stores naive UTC datetimes — use utcnow() for comparisons
-    since = datetime.utcnow() - timedelta(hours=hours)
+    since = utcnow() - timedelta(hours=hours)
     return (
         db.query(OptimizationResult)
         .filter(OptimizationResult.timestamp >= since)
@@ -40,7 +41,7 @@ def get_state_history(
 ):
     """Return system state history for the last N hours."""
     # DB stores naive UTC datetimes — use utcnow() for comparisons
-    since = datetime.utcnow() - timedelta(hours=hours)
+    since = utcnow() - timedelta(hours=hours)
     return (
         db.query(SystemState)
         .filter(SystemState.timestamp >= since)
@@ -59,7 +60,7 @@ def get_action_history(
 ):
     """Return HA action audit log for the last N hours."""
     # DB stores naive UTC datetimes — use utcnow() for comparisons
-    since = datetime.utcnow() - timedelta(hours=hours)
+    since = utcnow() - timedelta(hours=hours)
     query = db.query(SystemAction).filter(SystemAction.timestamp >= since)
     if action_type:
         query = query.filter(SystemAction.action_type == action_type)
@@ -67,7 +68,7 @@ def get_action_history(
     return [
         {
             "id": a.id,
-            "timestamp": a.timestamp,
+            "timestamp": a.timestamp.isoformat() + "Z",
             "action_type": a.action_type,
             "entity_id": a.entity_id,
             "old_value": a.old_value,
@@ -84,7 +85,7 @@ def get_action_history(
 def get_daily_stats(db: Session = Depends(get_db)):
     """Return summary statistics for today."""
     # DB stores naive UTC datetimes — use utcnow() for comparisons
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     actions_today = db.query(SystemAction).filter(SystemAction.timestamp >= today).count()
     decisions_today = db.query(OptimizationResult).filter(OptimizationResult.timestamp >= today).count()
     return {

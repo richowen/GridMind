@@ -3,16 +3,15 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
+from app.schemas.base import UTCModel
 
 
-class PriceOut(BaseModel):
+class PriceOut(UTCModel):
     id: int
     valid_from: datetime
     valid_to: datetime
     price_pence: float
     classification: Optional[str] = None
-
-    model_config = {"from_attributes": True}
 
 
 class PriceStats(BaseModel):

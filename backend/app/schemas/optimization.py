@@ -2,10 +2,10 @@
 
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from app.schemas.base import UTCModel
 
 
-class OptimizationResultOut(BaseModel):
+class OptimizationResultOut(UTCModel):
     id: int
     timestamp: datetime
     current_soc: Optional[float] = None
@@ -19,10 +19,8 @@ class OptimizationResultOut(BaseModel):
     decision_reason: Optional[str] = None
     next_action_time: Optional[datetime] = None  # Next scheduled optimization run
 
-    model_config = {"from_attributes": True}
 
-
-class SystemStateOut(BaseModel):
+class SystemStateOut(UTCModel):
     id: int
     timestamp: datetime
     battery_soc: Optional[float] = None
@@ -34,10 +32,8 @@ class SystemStateOut(BaseModel):
     # Note: immersion_main_on / immersion_lucy_on removed — per-device state is
     # logged to InfluxDB immersion_states measurement instead.
 
-    model_config = {"from_attributes": True}
 
-
-class CurrentStateOut(BaseModel):
+class CurrentStateOut(UTCModel):
     """Combined live state for the dashboard."""
     battery_soc: Optional[float] = None
     battery_mode: Optional[str] = None

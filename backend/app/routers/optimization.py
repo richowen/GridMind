@@ -1,6 +1,5 @@
 """Optimization router: recommendation, prices, and current system state endpoints."""
 
-from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends
@@ -11,6 +10,7 @@ from app.models.optimization import OptimizationResult, SystemState
 from app.models.prices import ElectricityPrice
 from app.schemas.optimization import OptimizationResultOut, SystemStateOut, CurrentStateOut
 from app.schemas.prices import PriceOut, PriceStats
+from app.utils import utcnow
 
 router = APIRouter(tags=["optimization"])
 
@@ -24,14 +24,15 @@ def get_current_recommendation(db: Session = Depends(get_db)):
         .first()
     )
     if not result:
-        return {"id": 0, "timestamp": datetime.utcnow(), "optimization_status": "no_data"}
+        # Return a minimal dict; timestamp will be serialised with 'Z' by OptimizationResultOut
+        return {"id": 0, "timestamp": utcnow(), "optimization_status": "no_data"}
     return result
 
 
 @router.get("/prices/current", response_model=List[PriceOut])
 def get_current_prices(hours: int = 48, db: Session = Depends(get_db)):
     """Return upcoming electricity prices for the next N hours."""
-    now = datetime.utcnow()  # DB stores naive UTC datetimes
+    now = utcnow()  # DB stores naive UTC datetimes
     prices = (
         db.query(ElectricityPrice)
         .filter(ElectricityPrice.valid_to >= now)
@@ -46,7 +47,7 @@ def get_current_prices(hours: int = 48, db: Session = Depends(get_db)):
 def get_price_stats(db: Session = Depends(get_db)):
     """Return statistics for today's prices."""
     import statistics
-    now = datetime.utcnow()  # DB stores naive UTC datetimes
+    now = utcnow()  # DB stores naive UTC datetimes
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     prices = (
         db.query(ElectricityPrice)

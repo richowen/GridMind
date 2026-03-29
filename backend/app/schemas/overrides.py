@@ -3,9 +3,10 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
+from app.schemas.base import UTCModel
 
 
-class ManualOverrideOut(BaseModel):
+class ManualOverrideOut(UTCModel):
     id: int
     immersion_id: int
     immersion_name: str
@@ -16,8 +17,6 @@ class ManualOverrideOut(BaseModel):
     expires_at: datetime
     cleared_at: Optional[datetime] = None
     cleared_by: Optional[str] = None
-
-    model_config = {"from_attributes": True}
 
 
 class ManualOverrideCreate(BaseModel):

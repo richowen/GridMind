@@ -65,7 +65,7 @@ async def _fetch_initial_state(db) -> Optional[dict]:
         "recommended_mode": latest_opt.recommended_mode,
         "decision_reason": latest_opt.decision_reason,
         "live_charge_rate_kw": None,  # Not stored in DB; populated by next broadcast
-        "last_updated": latest_opt.timestamp.isoformat() if latest_opt.timestamp else None,
+        "last_updated": (latest_opt.timestamp.isoformat() + "Z") if latest_opt.timestamp else None,
     }
 
 

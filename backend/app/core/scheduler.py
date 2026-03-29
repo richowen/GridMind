@@ -137,10 +137,27 @@ async def optimization_loop():
                 .limit(96)
                 .all()
             )
-            current_price = next(
-                (p.price_pence for p in prices_rows if p.valid_from <= now <= p.valid_to),
+            current_price_row = next(
+                (p for p in prices_rows if p.valid_from <= now <= p.valid_to),
                 None,
             )
+            current_price = current_price_row.price_pence if current_price_row else None
+            # DIAGNOSTIC: log the UTC time and matched price slot so we can verify
+            # the optimizer is using the correct half-hour period (not off by 1hr due to BST).
+            if current_price_row:
+                logger.info(
+                    f"[DIAG] optimization_loop: now={now.isoformat()}Z (UTC), "
+                    f"matched slot valid_from={current_price_row.valid_from.isoformat()}Z "
+                    f"valid_to={current_price_row.valid_to.isoformat()}Z "
+                    f"price={current_price:.2f}p"
+                )
+            else:
+                logger.warning(
+                    f"[DIAG] optimization_loop: now={now.isoformat()}Z (UTC), "
+                    f"NO matching price slot found. "
+                    f"First available slot: "
+                    f"{prices_rows[0].valid_from.isoformat() if prices_rows else 'none'}"
+                )
 
             from app.core.optimizer import PricePeriod
             price_periods = [
@@ -229,7 +246,7 @@ async def optimization_loop():
                 "recommended_mode": result.recommended_mode,
                 "decision_reason": result.decision_reason,
                 "live_charge_rate_kw": live_charge_rate,
-                "last_updated": utcnow().isoformat(),
+                "last_updated": utcnow().isoformat() + "Z",
             },
         })
 
@@ -281,7 +298,17 @@ async def price_refresh():
             db.close()
 
         influx_client.write_prices(prices)
-        await manager.broadcast({"type": "prices_updated", "data": prices})
+        # Serialise datetime objects to UTC ISO strings with 'Z' suffix before broadcasting
+        # so the frontend can parse them correctly as UTC (not local time).
+        prices_serialised = [
+            {
+                **p,
+                "valid_from": p["valid_from"].isoformat() + "Z",
+                "valid_to": p["valid_to"].isoformat() + "Z",
+            }
+            for p in prices
+        ]
+        await manager.broadcast({"type": "prices_updated", "data": prices_serialised})
         logger.info(f"price_refresh: stored {len(prices)} price periods")
 
     except Exception as e:
@@ -448,7 +475,7 @@ async def immersion_evaluation():
                             "desired_state": current_switch_state,
                             "source": "ha_external",
                             "duration_minutes": auto_duration,
-                            "expires_at": active_override.expires_at.isoformat(),
+                            "expires_at": active_override.expires_at.isoformat() + "Z",
                             "message": (
                                 f"{device.display_name} was turned {state_label} manually in "
                                 f"Home Assistant — auto-override created for {auto_duration} minutes."
