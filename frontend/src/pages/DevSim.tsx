@@ -1,7 +1,7 @@
 /**Dev Simulator — manually set all inputs and see LP optimizer + rules engine output.*/
 import {useState,type ReactNode} from 'react'
 import {
-  runSimulation,DEFAULT_SIM_REQUEST,SOLAR_PROFILES,
+  runSimulation,loadSnapshot,DEFAULT_SIM_REQUEST,SOLAR_PROFILES,
   type SimRequest,type SimResponse,type SimImmersionRule,type SolarProfile,
 } from '@/api/dev'
 import PriceGrid from '@/components/dev/PriceGrid'
@@ -54,8 +54,38 @@ export default function DevSim(){
   const [loading,setLoading]=useState(false)
   const [error,setError]=useState<string|null>(null)
   const [showImmersion,setShowImmersion]=useState(false)
+  const [snapping,setSnapping]=useState(false)
 
   const set=(key:keyof SimRequest,v:any)=>setReq(r=>({...r,[key]:v}))
+
+  const snap=async()=>{
+    setSnapping(true);setError(null)
+    try{
+      const s=await loadSnapshot()
+      setReq(r=>({
+        ...r,
+        battery_soc:s.battery_soc,
+        solar_power_kw:s.solar_power_kw>0?s.solar_power_kw:r.solar_power_kw,
+        battery_capacity_kwh:s.battery_capacity_kwh,
+        battery_max_charge_kw:s.battery_max_charge_kw,
+        battery_max_discharge_kw:s.battery_max_discharge_kw,
+        battery_efficiency:s.battery_efficiency,
+        battery_min_soc:s.battery_min_soc,
+        battery_max_soc:s.battery_max_soc,
+        battery_voltage_v:s.battery_voltage_v,
+        grid_import_limit_kw:s.grid_import_limit_kw,
+        grid_export_limit_kw:s.grid_export_limit_kw,
+        export_price_pence:s.export_price_pence,
+        assumed_load_kw:s.assumed_load_kw,
+        force_charge_threshold_kw:s.force_charge_threshold_kw,
+        force_discharge_threshold_kw:s.force_discharge_threshold_kw,
+        force_discharge_export_min_kw:s.force_discharge_export_min_kw,
+        optimization_horizon_hours:s.optimization_horizon_hours,
+        prices:s.prices.length?s.prices:r.prices,
+      }))
+    }catch(e:any){setError(e?.message??'Snapshot failed')}
+    finally{setSnapping(false)}
+  }
 
   const run=async()=>{
     setLoading(true);setError(null)
@@ -84,10 +114,17 @@ export default function DevSim(){
           <h1 className="text-xl font-bold text-foreground">Dev Simulator</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Run LP optimizer and rules engine with custom inputs — no HA or DB required</p>
         </div>
-        <button onClick={run} disabled={loading}
-          className="px-5 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/80 disabled:opacity-50 transition-colors">
-          {loading?'Running…':'▶ Run Simulation'}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={snap} disabled={snapping}
+            className="px-4 py-2 rounded-lg border border-border bg-card font-medium text-sm hover:bg-accent disabled:opacity-50 transition-colors"
+            title="Load current system state, settings and live prices from the DB">
+            {snapping?'Loading…':'📸 Load Snapshot'}
+          </button>
+          <button onClick={run} disabled={loading}
+            className="px-5 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/80 disabled:opacity-50 transition-colors">
+            {loading?'Running…':'▶ Run Simulation'}
+          </button>
+        </div>
       </div>
 
       {error&&<div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}

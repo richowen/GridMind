@@ -217,6 +217,70 @@ def _run_immersion_sim(req: SimRequest) -> Optional[SimImmersionResult]:
     return SimImmersionResult(action=decision.action, source=decision.source, reason=decision.reason)
 
 
+@router.get("/dev/snapshot")
+def snapshot(db=None):
+    """Return current system state + settings + 24h prices from DB.
+    Used by the dev simulator 'Load Snapshot' button. No HA required."""
+    from app.database import SessionLocal
+    from app.models.optimization import OptimizationResult
+    from app.models.prices import ElectricityPrice
+    from app.core.settings_cache import get_settings
+    from app.utils import utcnow
+
+    db = SessionLocal()
+    try:
+        now = utcnow()
+        latest = (
+            db.query(OptimizationResult)
+            .order_by(OptimizationResult.timestamp.desc())
+            .first()
+        )
+        prices_rows = (
+            db.query(ElectricityPrice)
+            .filter(ElectricityPrice.valid_to >= now)
+            .order_by(ElectricityPrice.valid_from)
+            .limit(48)
+            .all()
+        )
+        settings = get_settings()
+        soc = float(latest.current_soc) if latest and latest.current_soc is not None else 50.0
+        solar = float(latest.current_solar_kw) if latest and latest.current_solar_kw is not None else 0.0
+        prices = [
+            {"valid_from": p.valid_from.isoformat() + "Z", "price_pence": float(p.price_pence)}
+            for p in prices_rows
+        ]
+    finally:
+        db.close()
+
+    def _f(key, default):
+        try: return float(settings.get(key, default))
+        except: return float(default)
+    def _i(key, default):
+        try: return int(float(settings.get(key, default)))
+        except: return int(default)
+
+    return {
+        "battery_soc": soc,
+        "solar_power_kw": solar,
+        "battery_capacity_kwh": _f("battery_capacity_kwh", 20.0),
+        "battery_max_charge_kw": _f("battery_max_charge_kw", 10.5),
+        "battery_max_discharge_kw": _f("battery_max_discharge_kw", 10.5),
+        "battery_efficiency": _f("battery_efficiency", 0.95),
+        "battery_min_soc": _i("battery_min_soc", 10),
+        "battery_max_soc": _i("battery_max_soc", 100),
+        "battery_voltage_v": _f("battery_voltage_v", 48.0),
+        "grid_import_limit_kw": _f("grid_import_limit_kw", 15.0),
+        "grid_export_limit_kw": _f("grid_export_limit_kw", 5.0),
+        "export_price_pence": _f("export_price_pence", 15.0),
+        "assumed_load_kw": _f("assumed_load_kw", 2.0),
+        "force_charge_threshold_kw": _f("force_charge_threshold_kw", 0.5),
+        "force_discharge_threshold_kw": _f("force_discharge_threshold_kw", 0.5),
+        "force_discharge_export_min_kw": _f("force_discharge_export_min_kw", 0.05),
+        "optimization_horizon_hours": _i("optimization_horizon_hours", 24),
+        "prices": prices,
+    }
+
+
 @router.post("/dev/simulate", response_model=SimResponse)
 def simulate(req: SimRequest):
     """Run LP optimizer + optional rules engine with caller-supplied inputs.

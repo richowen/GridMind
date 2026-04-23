@@ -71,3 +71,19 @@ export function generateFlatPrices(pence:number, n=48):SimPrice[] {
 export async function runSimulation(req:SimRequest):Promise<SimResponse> {
   return api.post<SimResponse>('/dev/simulate',req)
 }
+
+export interface SnapshotResponse {
+  battery_soc:number;solar_power_kw:number
+  battery_capacity_kwh:number;battery_max_charge_kw:number
+  battery_max_discharge_kw:number;battery_efficiency:number
+  battery_min_soc:number;battery_max_soc:number;battery_voltage_v:number
+  grid_import_limit_kw:number;grid_export_limit_kw:number
+  export_price_pence:number;assumed_load_kw:number
+  force_charge_threshold_kw:number;force_discharge_threshold_kw:number
+  force_discharge_export_min_kw:number;optimization_horizon_hours:number
+  prices:SimPrice[]
+}
+
+export async function loadSnapshot():Promise<SnapshotResponse> {
+  return api.get<SnapshotResponse>('/dev/snapshot')
+}
