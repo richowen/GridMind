@@ -250,7 +250,8 @@ class BatteryOptimizer:
             # LP wants to actively discharge to grid — use Force Discharge
             mode = "Force Discharge"
             reason = (
-                f"LP optimal: discharging {discharge_0:.2f} kW to grid at {period_prices[0]:.1f}p"
+                f"LP optimal: discharging {discharge_0:.2f} kW to grid "
+                f"(export {export_price_pence:.1f}p, import {period_prices[0]:.1f}p)"
             )
         else:
             mode = "Self Use"
