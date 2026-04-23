@@ -13,8 +13,11 @@ export interface SimImmersionInput {
   battery_soc:number;solar_power_kw:number;current_price_pence:number
   current_temp_c:number|null;rules:SimImmersionRule[]
 }
+export type SolarProfile = 'sunny'|'cloudy'|'intermittent'|'flat'
+
 export interface SimRequest {
   battery_soc:number;solar_power_kw:number
+  solar_profile:SolarProfile;solar_scale:number
   live_charge_rate_kw:number|null;live_battery_voltage_v:number|null
   battery_capacity_kwh:number;battery_max_charge_kw:number
   battery_max_discharge_kw:number;battery_efficiency:number
@@ -38,8 +41,16 @@ export interface SimResponse {
   immersion:SimImmersionResult|null
 }
 
+export const SOLAR_PROFILES:{value:SolarProfile;label:string;desc:string}[] = [
+  {value:'sunny',   label:'☀️ Sunny',        desc:'Clear sky — full bell curve'},
+  {value:'cloudy',  label:'☁️ Cloudy',        desc:'Overcast — ~22% output'},
+  {value:'intermittent',label:'⛅ Intermittent',desc:'Patchy cloud — variable output'},
+  {value:'flat',    label:'➖ Flat',           desc:'Constant kW all day (debugging)'},
+]
+
 export const DEFAULT_SIM_REQUEST: SimRequest = {
-  battery_soc:50,solar_power_kw:3,live_charge_rate_kw:null,live_battery_voltage_v:null,
+  battery_soc:50,solar_power_kw:10.6,solar_profile:'sunny',solar_scale:1.0,
+  live_charge_rate_kw:null,live_battery_voltage_v:null,
   battery_capacity_kwh:20,battery_max_charge_kw:10.5,battery_max_discharge_kw:5,
   battery_efficiency:0.95,battery_min_soc:10,battery_max_soc:100,battery_voltage_v:48,
   grid_import_limit_kw:15,grid_export_limit_kw:5,export_price_pence:15,assumed_load_kw:2,

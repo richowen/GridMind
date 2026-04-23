@@ -1,8 +1,8 @@
 /**Dev Simulator — manually set all inputs and see LP optimizer + rules engine output.*/
 import {useState,type ReactNode} from 'react'
 import {
-  runSimulation,DEFAULT_SIM_REQUEST,
-  type SimRequest,type SimResponse,type SimImmersionRule,
+  runSimulation,DEFAULT_SIM_REQUEST,SOLAR_PROFILES,
+  type SimRequest,type SimResponse,type SimImmersionRule,type SolarProfile,
 } from '@/api/dev'
 import PriceGrid from '@/components/dev/PriceGrid'
 import ResultChart from '@/components/dev/ResultChart'
@@ -123,9 +123,32 @@ export default function DevSim(){
         <Section title="System State">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Battery SOC %" value={req.battery_soc} onChange={v=>set('battery_soc',v)} step="1" min={0} max={100}/>
-            <Field label="Solar Power kW" value={req.solar_power_kw} onChange={v=>set('solar_power_kw',v)} step="0.1" min={0}/>
+            <Field label="Solar Peak kW (array max)" value={req.solar_power_kw} onChange={v=>set('solar_power_kw',v)} step="0.1" min={0}/>
             <Field label="Live BMS Charge Rate kW (opt)" value={req.live_charge_rate_kw??0} onChange={v=>set('live_charge_rate_kw',v||null)} step="0.1" min={0}/>
             <Field label="Live Battery Voltage V (opt)" value={req.live_battery_voltage_v??0} onChange={v=>set('live_battery_voltage_v',v||null)} step="0.1" min={0}/>
+          </div>
+          {/* Solar profile row */}
+          <div className="mt-3 space-y-2">
+            <span className="text-xs text-muted-foreground">Solar Profile</span>
+            <div className="grid grid-cols-4 gap-2">
+              {SOLAR_PROFILES.map(p=>(
+                <button key={p.value}
+                  onClick={()=>set('solar_profile',p.value as SolarProfile)}
+                  title={p.desc}
+                  className={`text-xs px-2 py-1.5 rounded border transition-colors ${req.solar_profile===p.value?'border-primary bg-primary/20 text-primary-foreground':'border-border bg-background text-muted-foreground hover:border-primary/50'}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Scale (season)</span>
+              <input type="range" min={0} max={1} step={0.01}
+                value={req.solar_scale}
+                onChange={e=>set('solar_scale',parseFloat(e.target.value))}
+                className="flex-1 accent-primary"/>
+              <span className="text-xs font-mono w-10 text-right text-foreground">{Math.round(req.solar_scale*100)}%</span>
+              <span className="text-xs text-muted-foreground">≈{(req.solar_power_kw*req.solar_scale).toFixed(1)}kW pk</span>
+            </div>
           </div>
         </Section>
 

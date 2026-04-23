@@ -43,7 +43,9 @@ class SimImmersionInput(BaseModel):
 class SimRequest(BaseModel):
     # System state
     battery_soc: float = Field(50.0, ge=0, le=100)
-    solar_power_kw: float = Field(3.0, ge=0)
+    solar_power_kw: float = Field(10.6, ge=0)
+    solar_profile: str = "sunny"  # sunny | cloudy | intermittent | flat
+    solar_scale: float = Field(1.0, ge=0.0, le=1.0)
     live_charge_rate_kw: Optional[float] = None
     live_battery_voltage_v: Optional[float] = None
     # Battery settings (override DB)

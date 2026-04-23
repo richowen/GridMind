@@ -1,5 +1,6 @@
 """Stateless dev/simulate endpoint — runs LP optimizer and rules engine
 with all inputs provided in the request body. No DB, no HA required."""
+import math
 import time
 import logging
 from contextlib import contextmanager
@@ -16,6 +17,49 @@ from app.schemas.dev import SimRequest, SimResponse, SimPeriodResult, SimImmersi
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dev"])
+
+# Solar profile: 48 half-hourly slots (00:00-23:30 UTC+0)
+# UK-ish: dawn~slot14 (07:00), dusk~slot38 (19:00), peak~slot26 (13:00)
+_DAWN, _DUSK = 14, 38
+
+def _build_solar_slots(profile: str, peak_kw: float, n: int = 48) -> List[float]:
+    """Return list of n per-slot solar kW values for the chosen profile."""
+    span = _DUSK - _DAWN
+    base = []
+    for t in range(n):
+        if t <= _DAWN or t >= _DUSK:
+            base.append(0.0)
+        else:
+            # sin curve, peak slightly after centre (slot 26)
+            x = math.pi * (t - _DAWN) / span
+            base.append(math.sin(x))
+
+    if profile == "flat":
+        return [peak_kw] * n
+
+    if profile == "sunny":
+        return [round(v * peak_kw, 3) for v in base]
+
+    if profile == "cloudy":
+        # overall ~25% with small deterministic ripple
+        result = []
+        for t, v in enumerate(base):
+            ripple = 0.05 * math.sin(t * 1.3)
+            result.append(round(max(0.0, v * peak_kw * (0.22 + ripple)), 3))
+        return result
+
+    if profile == "intermittent":
+        # sunny but with deterministic cloud patches every ~5 slots
+        result = []
+        for t, v in enumerate(base):
+            # cloud factor: drop to 0.1 in patches
+            phase = math.sin(t * 0.9) * math.cos(t * 0.5)
+            cf = 0.1 if phase > 0.6 else (0.5 if phase > 0.2 else 1.0)
+            result.append(round(v * peak_kw * cf, 3))
+        return result
+
+    # fallback: flat
+    return [peak_kw] * n
 
 
 @contextmanager
@@ -55,6 +99,10 @@ def _run_sim_lp(req: SimRequest, prices: List[PricePeriod]):
     periods = prices[:n]
     pvals = [p.price_pence for p in periods]
 
+    # Per-slot solar generation
+    peak_kw = req.solar_power_kw * req.solar_scale
+    solar_slots = _build_solar_slots(req.solar_profile, peak_kw, 48)[:n]
+
     prob = pulp.LpProblem("sim", pulp.LpMinimize)
     gi = [pulp.LpVariable(f"gi_{t}", 0, g_imp) for t in range(n)]
     ge = [pulp.LpVariable(f"ge_{t}", 0, g_exp) for t in range(n)]
@@ -69,7 +117,7 @@ def _run_sim_lp(req: SimRequest, prices: List[PricePeriod]):
     init_soc = req.battery_soc / 100.0 * cap
     inv_eff = 1.0 / eff
     for t in range(n):
-        prob += load + ch[t] + ge[t] == req.solar_power_kw + di[t] + gi[t]
+        prob += load + ch[t] + ge[t] == solar_slots[t] + di[t] + gi[t]
         prev = init_soc if t == 0 else soc[t-1]
         prob += soc[t] == prev + ch[t]*eff*0.5 - di[t]*inv_eff*0.5
 
@@ -83,7 +131,7 @@ def _run_sim_lp(req: SimRequest, prices: List[PricePeriod]):
             slot=t,
             valid_from=periods[t].valid_from.isoformat() + "Z",
             price_pence=pvals[t],
-            solar_kw=req.solar_power_kw,
+            solar_kw=solar_slots[t],
             charge_kw=round(pulp.value(ch[t]) or 0.0, 3),
             discharge_kw=round(pulp.value(di[t]) or 0.0, 3),
             grid_import_kw=round(pulp.value(gi[t]) or 0.0, 3),
