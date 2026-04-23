@@ -121,9 +121,16 @@ async def optimization_loop():
         solar_forecast_1hr = await ha_client.get_solar_forecast_1hr()
         battery_mode = await ha_client.get_battery_mode()
         # Note 1: live BMS charge rate for LP upper-bound cap
-        live_charge_rate = await ha_client.get_charge_rate()
-        # Live battery voltage for accurate kW→amps conversion
+        # BMS charge rate is in amps — convert to kW using live battery voltage
+        live_charge_rate_amps = await ha_client.get_charge_rate_amps()
+        # Live battery voltage (sensor.foxinverter_invbatvolt) — used both for kW→amps
+        # discharge conversion and for amps→kW BMS charge rate conversion
         live_battery_voltage = await ha_client.get_battery_voltage()
+        live_charge_rate = (
+            live_charge_rate_amps * live_battery_voltage / 1000
+            if (live_charge_rate_amps is not None and live_battery_voltage)
+            else None
+        )
 
         # Single DB session for the entire optimization cycle
         db = SessionLocal()

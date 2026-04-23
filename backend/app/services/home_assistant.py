@@ -97,8 +97,9 @@ class HomeAssistantClient:
             return None
         return await self.get_state_float(entity_id)
 
-    async def get_charge_rate(self) -> Optional[float]:
-        """Return the live BMS charge rate in kW, or None if unavailable."""
+    async def get_charge_rate_amps(self) -> Optional[float]:
+        """Return the live BMS charge rate in amps from sensor.foxinverter_bms_charge_rate,
+        or None if unavailable. Caller must convert to kW using live battery voltage."""
         settings = get_settings()
         entity_id = settings.get("ha_entity_charge_rate", "sensor.foxinverter_bms_charge_rate")
         return await self.get_state_float(entity_id)
