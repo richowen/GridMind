@@ -3,7 +3,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, TrendingUp, Flame, History,
-  Sliders, Settings, Zap, FlaskConical,
+  Sliders, Settings, Zap, FlaskConical, HelpCircle,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/controls', icon: Sliders, label: 'Controls' },
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/dev', icon: FlaskConical, label: 'Dev Simulator' },
+  { to: '/why', icon: HelpCircle, label: 'Why?' },
 ]
 
 export default function Sidebar() {

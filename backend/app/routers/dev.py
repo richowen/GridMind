@@ -13,7 +13,10 @@ import pulp
 import app.core.settings_cache as _sc
 from app.core.optimizer import PricePeriod
 from app.core.rules_engine import RulesEngine, SystemState as RulesState
-from app.schemas.dev import SimRequest, SimResponse, SimPeriodResult, SimImmersionResult
+from app.schemas.dev import (
+    SimRequest, SimResponse, SimPeriodResult, SimImmersionResult,
+    ConditionTrace, RuleTrace, DeviceDebugResult, LpDecisionTrace, WhyResponse,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dev"])
@@ -340,4 +343,171 @@ def simulate(req: SimRequest):
         recommended_discharge_current=max_d_amps,
         periods=periods,
         immersion=_run_immersion_sim(req),
+    )
+
+
+def _trace_rule(rule, state: RulesState, device_temp) -> RuleTrace:
+    """Evaluate a rule and return a full per-condition trace."""
+    from datetime import time as dtime
+    from app.core.rules_engine import OPS
+    conditions = []
+
+    def _ct(ctype, enabled, actual, op, threshold):
+        if not enabled:
+            return ConditionTrace(type=ctype, enabled=False, skipped=False, actual_value=actual, operator=op, threshold=threshold, passed=None)
+        if actual is None:
+            return ConditionTrace(type=ctype, enabled=True, skipped=True, actual_value=None, operator=op, threshold=threshold, passed=None)
+        op_fn = OPS.get(op)
+        passed = op_fn(actual, threshold) if op_fn else False
+        return ConditionTrace(type=ctype, enabled=True, skipped=False, actual_value=actual, operator=op, threshold=threshold, passed=passed)
+
+    conditions.append(_ct("price", rule.price_enabled, state.current_price_pence, rule.price_operator, rule.price_threshold_pence))
+    conditions.append(_ct("soc", rule.soc_enabled, state.battery_soc, rule.soc_operator, rule.soc_threshold_percent))
+    conditions.append(_ct("solar", rule.solar_enabled, state.solar_power_kw, rule.solar_operator, rule.solar_threshold_kw))
+    conditions.append(_ct("temp", rule.temp_enabled, device_temp, rule.temp_operator, rule.temp_threshold_c))
+
+    # Time condition
+    if rule.time_enabled:
+        from datetime import datetime as _dt
+        now_t = _dt.now().time()
+        ts, te = rule.time_start, rule.time_end
+        in_window = (ts <= now_t <= te) if ts <= te else (now_t >= ts or now_t <= te)
+        conditions.append(ConditionTrace(type="time", enabled=True, skipped=False,
+            actual_value=None, operator=f"{ts}–{te}", threshold=None, passed=in_window))
+    else:
+        conditions.append(ConditionTrace(type="time", enabled=False, skipped=False,
+            actual_value=None, operator=None, threshold=None, passed=None))
+
+    # Active conditions (not disabled, not skipped)
+    active = [c for c in conditions if c.enabled and not c.skipped and c.passed is not None]
+    if not active:
+        matched = False
+    elif rule.logic_operator == "AND":
+        matched = all(c.passed for c in active)
+    else:
+        matched = any(c.passed for c in active)
+
+    return RuleTrace(
+        rule_name=rule.rule_name,
+        priority=rule.priority,
+        enabled=rule.is_enabled,
+        action=rule.action,
+        logic_operator=rule.logic_operator,
+        matched=matched and rule.is_enabled,
+        conditions=conditions,
+    )
+
+
+@router.get("/dev/why", response_model=WhyResponse)
+def why():
+    """Return a full trace of why the system made its last decisions.
+    Reads latest optimization result + all immersion devices from DB,
+    re-evaluates rules engine in trace mode. No HA call required."""
+    from app.database import SessionLocal
+    from app.models.optimization import OptimizationResult
+    from app.models.prices import ElectricityPrice
+    from app.models.immersion import ImmersionDevice
+    from app.models.overrides import ManualOverride
+    from app.utils import utcnow
+
+    db = SessionLocal()
+    try:
+        now = utcnow()
+
+        # Latest LP result
+        latest = db.query(OptimizationResult).order_by(OptimizationResult.timestamp.desc()).first()
+
+        # Current price
+        price_row = (
+            db.query(ElectricityPrice)
+            .filter(ElectricityPrice.valid_from <= now, ElectricityPrice.valid_to >= now)
+            .first()
+        )
+        current_price = float(price_row.price_pence) if price_row else None
+
+        soc = float(latest.current_soc) if latest and latest.current_soc is not None else None
+        solar = float(latest.current_solar_kw) if latest and latest.current_solar_kw is not None else None
+
+        readings = {
+            "battery_soc_pct": soc,
+            "solar_power_kw": solar,
+            "current_price_pence": current_price,
+            "last_optimization": latest.timestamp.isoformat() + "Z" if latest else None,
+            "last_mode": latest.recommended_mode if latest else None,
+        }
+
+        lp = LpDecisionTrace(
+            mode=latest.recommended_mode if latest else "Unknown",
+            reason=latest.decision_reason if latest else "No optimization run yet",
+            status=latest.optimization_status if latest else "unknown",
+            current_slot_price_pence=current_price,
+            battery_soc=soc,
+            solar_power_kw=solar,
+            objective_value=float(latest.objective_value) if latest and latest.objective_value is not None else None,
+            optimization_time_ms=float(latest.optimization_time_ms) if latest and latest.optimization_time_ms is not None else None,
+            last_run=latest.timestamp.isoformat() + "Z" if latest else None,
+        )
+
+        state = RulesState(battery_soc=soc, solar_power_kw=solar, current_price_pence=current_price)
+
+        devices = db.query(ImmersionDevice).filter(ImmersionDevice.is_enabled == True).all()
+        device_results = []
+
+        for device in devices:
+            active_override = (
+                db.query(ManualOverride)
+                .filter(ManualOverride.immersion_id == device.id, ManualOverride.is_active == True, ManualOverride.expires_at > now)
+                .first()
+            )
+            override_str = None
+            if active_override:
+                remaining = int((active_override.expires_at - now).total_seconds() / 60)
+                override_str = f"{'ON' if active_override.desired_state else 'OFF'} until {active_override.expires_at.isoformat()}Z ({remaining}min remaining, source={active_override.source})"
+
+            # We don't have live temp here (no HA call), use None
+            device_temp = None
+
+            rules = sorted(device.smart_rules or [], key=lambda r: r.priority)
+            rule_traces = [_trace_rule(r, state, device_temp) for r in rules if r.is_enabled]
+            # Also include disabled rules for visibility
+            rule_traces += [_trace_rule(r, state, device_temp) for r in rules if not r.is_enabled]
+            rule_traces.sort(key=lambda rt: rt.priority)
+
+            # Determine final decision (mirror rules_engine.evaluate logic)
+            if active_override:
+                remaining = int((active_override.expires_at - now).total_seconds() / 60)
+                final = SimImmersionResult(
+                    action=active_override.desired_state,
+                    source="manual_override",
+                    reason=f"Manual override active ({remaining}min remaining)",
+                )
+            else:
+                fired = next((rt for rt in rule_traces if rt.matched), None)
+                if fired:
+                    final = SimImmersionResult(
+                        action=(fired.action == "ON"),
+                        source="smart_rule",
+                        reason=fired.rule_name,
+                    )
+                else:
+                    final = SimImmersionResult(action=False, source="default", reason="No rules matched")
+
+            device_results.append(DeviceDebugResult(
+                device_name=device.name,
+                device_id=device.id,
+                switch_entity_id=device.switch_entity_id,
+                temp_c=None,
+                active_override=override_str,
+                final_decision=final,
+                rule_traces=rule_traces,
+            ))
+
+    finally:
+        db.close()
+
+    return WhyResponse(
+        timestamp=now.isoformat() + "Z",
+        readings=readings,
+        lp_decision=lp,
+        immersion_devices=device_results,
     )

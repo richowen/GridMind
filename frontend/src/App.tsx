@@ -10,6 +10,7 @@ import History from '@/pages/History'
 import Controls from '@/pages/Controls'
 import Settings from '@/pages/Settings'
 import DevSim from '@/pages/DevSim'
+import Why from '@/pages/Why'
 import { useLiveState } from '@/hooks/useLiveState'
 
 /** The main app shell (sidebar + header + content). */
@@ -30,6 +31,7 @@ function AppShell() {
             <Route path="/controls" element={<Controls />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/dev" element={<DevSim />} />
+            <Route path="/why" element={<Why />} />
           </Routes>
         </main>
       </div>
