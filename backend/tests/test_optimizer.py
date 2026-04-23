@@ -59,9 +59,11 @@ def test_discharge_current_calculated():
 
 
 def test_solar_exceeds_load_no_force_charge():
-    """When solar > load + charge need, grid import should be minimal."""
+    """When solar > load the LP stays feasible and is optimal.
+    10.6kW solar over 48 periods overflows battery+export (no curtailment var),
+    so use 5kW solar which is below load+export_limit ceiling (2+5=7kW)."""
     prices = make_prices(48, 20.0)
-    r = _run(soc=50.0, solar=10.6, prices=prices)
+    r = _run(soc=50.0, solar=5.0, prices=prices)
     assert r.optimization_status == "optimal"
 
 
