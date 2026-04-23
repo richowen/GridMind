@@ -11,7 +11,9 @@ import { TargetForm, BLANK_TARGET } from '@/components/immersion/TargetForm'
 export default function Immersions() {
   const qc = useQueryClient()
   const [selectedDevice, setSelectedDevice] = useState<ImmersionDeviceOut | null>(null)
-  const [activeTab, setActiveTab] = useState<'rules' | 'targets'>('rules')
+  const [activeTab, setActiveTab] = useState<'rules' | 'targets' | 'device'>('rules')
+  const [deviceEdit, setDeviceEdit] = useState<Partial<ImmersionDeviceOut>>({})
+  const [deviceSaved, setDeviceSaved] = useState<string | null>(null)
 
   // Rule form state: null = hidden, 'new' = adding, number = editing rule id
   const [ruleFormMode, setRuleFormMode] = useState<null | 'new' | number>(null)
@@ -90,6 +92,19 @@ export default function Immersions() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['targets'] }),
   })
 
+  // ── Device update mutation ──────────────────────────────────────────────────
+
+  const updateDeviceMutation = useMutation({
+    mutationFn: (body: Partial<ImmersionDeviceOut>) =>
+      immersionApi.updateDevice(selectedDevice!.id, body),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ['devices'] })
+      setSelectedDevice(updated)
+      setDeviceSaved('✅ Saved')
+      setTimeout(() => setDeviceSaved(null), 2500)
+    },
+  })
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   const handleSaveRule = (data: Partial<SmartRuleOut>) => {
@@ -165,19 +180,26 @@ export default function Immersions() {
 
           {/* Tabs */}
           <div className="flex gap-2 mb-4">
-            {(['rules', 'targets'] as const).map(tab => (
+            {([['rules','Smart Rules'],['targets','Temperature Targets'],['device','Device Settings']] as const).map(([tab,label]) => (
               <button
                 key={tab}
                 onClick={() => {
                   setActiveTab(tab)
                   setRuleFormMode(null)
                   setTargetFormMode(null)
+                  if(tab==='device') setDeviceEdit({
+                    display_name: selectedDevice.display_name,
+                    switch_entity_id: selectedDevice.switch_entity_id,
+                    temp_sensor_entity_id: selectedDevice.temp_sensor_entity_id ?? '',
+                    is_enabled: selectedDevice.is_enabled,
+                    sort_order: selectedDevice.sort_order,
+                  })
                 }}
                 className={`px-3 py-1.5 text-sm rounded ${
                   activeTab === tab ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
                 }`}
               >
-                {tab === 'rules' ? 'Smart Rules' : 'Temperature Targets'}
+                {label}
               </button>
             ))}
           </div>
@@ -251,6 +273,79 @@ export default function Immersions() {
                   <Plus className="h-4 w-4" /> Add Rule
                 </button>
               )}
+            </div>
+          )}
+
+          {/* ── Device Settings tab ── */}
+          {activeTab === 'device' && (
+            <div className="space-y-4 max-w-lg">
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Display Name</label>
+                  <input
+                    className="w-full rounded border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={deviceEdit.display_name ?? ''}
+                    onChange={e => setDeviceEdit(p => ({...p, display_name: e.target.value}))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Switch Entity ID</label>
+                  <input
+                    className="w-full rounded border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="switch.immersion_main"
+                    value={deviceEdit.switch_entity_id ?? ''}
+                    onChange={e => setDeviceEdit(p => ({...p, switch_entity_id: e.target.value}))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    Temperature Sensor Entity ID
+                    <span className="ml-1 text-muted-foreground/60">(optional — enables temp rules &amp; Why? trace)</span>
+                  </label>
+                  <input
+                    className="w-full rounded border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="sensor.immersion_main_temperature"
+                    value={deviceEdit.temp_sensor_entity_id ?? ''}
+                    onChange={e => setDeviceEdit(p => ({...p, temp_sensor_entity_id: e.target.value || null}))}
+                  />
+                  {selectedDevice.temp_sensor_entity_id
+                    ? <p className="text-xs text-green-400 mt-1">✅ Sensor configured — temp will be read from HA on each evaluation</p>
+                    : <p className="text-xs text-yellow-400 mt-1">⚠ No sensor — temp rules will be skipped (⏭) until one is set</p>
+                  }
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground block mb-1">Sort Order</label>
+                    <input
+                      type="number"
+                      className="w-24 rounded border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      value={deviceEdit.sort_order ?? 0}
+                      onChange={e => setDeviceEdit(p => ({...p, sort_order: parseInt(e.target.value) || 0}))}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-4">
+                    <input
+                      type="checkbox"
+                      id="dev-enabled"
+                      checked={deviceEdit.is_enabled ?? true}
+                      onChange={e => setDeviceEdit(p => ({...p, is_enabled: e.target.checked}))}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="dev-enabled" className="text-sm">Enabled</label>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => updateDeviceMutation.mutate(deviceEdit)}
+                  disabled={updateDeviceMutation.isPending}
+                  className="px-4 py-1.5 rounded bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 disabled:opacity-50"
+                >
+                  {updateDeviceMutation.isPending ? 'Saving…' : 'Save Changes'}
+                </button>
+                {deviceSaved && <span className="text-xs text-green-400">{deviceSaved}</span>}
+                {updateDeviceMutation.isError && <span className="text-xs text-red-400">❌ Save failed</span>}
+              </div>
             </div>
           )}
 

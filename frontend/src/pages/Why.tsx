@@ -1,6 +1,6 @@
 /**Why page — full system decision trace: what readings, what rules, why each device is ON/OFF.*/
 import {useState,useCallback} from 'react'
-import {fetchWhy,type WhyResponse,type ConditionTrace,type RuleTrace,type DeviceDebugResult} from '@/api/why'
+import {fetchWhy,switchImmersion,type WhyResponse,type ConditionTrace,type RuleTrace,type DeviceDebugResult} from '@/api/why'
 
 function fmtVal(v:number|null,unit:string){
   if(v===null||v===undefined) return <span className="text-muted-foreground italic">no data</span>
@@ -79,7 +79,19 @@ function RuleRow({rule}:{rule:RuleTrace}){
 
 function DeviceCard({d}:{d:DeviceDebugResult}){
   const [open,setOpen]=useState(true)
+  const [swStatus,setSwStatus]=useState<string|null>(null)
+  const [swBusy,setSwBusy]=useState(false)
   const dec=d.final_decision
+
+  const doSwitch=async(state:boolean)=>{
+    setSwBusy(true);setSwStatus(null)
+    try{
+      const r=await switchImmersion(d.device_id,state)
+      setSwStatus(r.success?`✅ Sent ${state?'ON':'OFF'} to HA`:`❌ HA call failed`)
+    }catch(e:any){setSwStatus(`❌ ${e?.message??'Error'}`)}
+    finally{setSwBusy(false)}
+  }
+
   return(
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <button onClick={()=>setOpen(o=>!o)}
@@ -110,6 +122,19 @@ function DeviceCard({d}:{d:DeviceDebugResult}){
                 ⚡ Override active: {d.active_override}
               </div>
             )}
+            {/* Manual switch buttons */}
+            <div className="flex items-center gap-2 pt-1">
+              <span className="text-xs text-muted-foreground">Manual test:</span>
+              <button onClick={()=>doSwitch(true)} disabled={swBusy}
+                className="text-xs px-2 py-1 rounded border border-green-500/40 bg-green-500/10 text-green-300 hover:bg-green-500/20 disabled:opacity-40 transition-colors">
+                🔥 Turn ON
+              </button>
+              <button onClick={()=>doSwitch(false)} disabled={swBusy}
+                className="text-xs px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-40 transition-colors">
+                💧 Turn OFF
+              </button>
+              {swStatus&&<span className="text-xs">{swStatus}</span>}
+            </div>
           </div>
           {d.rule_traces.length===0
             ?<p className="text-xs text-muted-foreground italic">No smart rules configured.</p>
@@ -136,10 +161,24 @@ export default function Why(){
     finally{setLoading(false)}
   },[])
 
+  const [copyMsg,setCopyMsg]=useState<string|null>(null)
   const copyAI=()=>{
     if(!data) return
     const txt=JSON.stringify(data,null,2)
-    navigator.clipboard.writeText(txt).catch(()=>{})
+    const fallback=()=>{
+      const el=document.createElement('textarea')
+      el.value=txt
+      el.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0'
+      document.body.appendChild(el)
+      el.focus();el.select()
+      try{document.execCommand('copy');setCopyMsg('✅ Copied!')}
+      catch{setCopyMsg('❌ Copy failed — try Ctrl+A on the text below')}
+      document.body.removeChild(el)
+      setTimeout(()=>setCopyMsg(null),3000)
+    }
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(txt).then(()=>{setCopyMsg('✅ Copied!');setTimeout(()=>setCopyMsg(null),3000)}).catch(fallback)
+    }else{fallback()}
   }
 
   const lp=data?.lp_decision
@@ -154,11 +193,14 @@ export default function Why(){
         </div>
         <div className="flex gap-2">
           {data&&(
-            <button onClick={copyAI}
-              className="px-3 py-2 rounded-lg border border-border bg-card text-sm hover:bg-accent transition-colors"
-              title="Copy full trace as JSON for AI debugging">
-              📋 Copy for AI
-            </button>
+            <div className="flex items-center gap-2">
+              {copyMsg&&<span className="text-xs text-green-400">{copyMsg}</span>}
+              <button onClick={copyAI}
+                className="px-3 py-2 rounded-lg border border-border bg-card text-sm hover:bg-accent transition-colors"
+                title="Copy full trace as JSON for AI debugging">
+                📋 Copy for AI
+              </button>
+            </div>
           )}
           <button onClick={load} disabled={loading}
             className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/80 disabled:opacity-50 transition-colors">

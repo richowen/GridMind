@@ -43,19 +43,19 @@ class ImmersionSmartRule(Base):
     logic_operator = Column(String(3), default="AND") # 'AND' or 'OR'
 
     price_enabled = Column(Boolean, default=False)
-    price_operator = Column(String(5))
+    price_operator = Column(String(5), default="<")
     price_threshold_pence = Column(Float)
 
     soc_enabled = Column(Boolean, default=False)
-    soc_operator = Column(String(5))
+    soc_operator = Column(String(5), default=">=")
     soc_threshold_percent = Column(Float)
 
     solar_enabled = Column(Boolean, default=False)
-    solar_operator = Column(String(5))
+    solar_operator = Column(String(5), default=">=")
     solar_threshold_kw = Column(Float)
 
     temp_enabled = Column(Boolean, default=False)
-    temp_operator = Column(String(5))
+    temp_operator = Column(String(5), default="<")
     temp_threshold_c = Column(Float)
 
     time_enabled = Column(Boolean, default=False)

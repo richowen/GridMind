@@ -81,13 +81,13 @@ class RulesEngine:
         """Evaluate all enabled conditions using AND/OR logic."""
         conditions = []
 
-        if rule.price_enabled and state.current_price_pence is not None:
+        if rule.price_enabled and state.current_price_pence is not None and rule.price_operator:
             conditions.append(self._compare(state.current_price_pence, rule.price_operator, rule.price_threshold_pence))
-        if rule.soc_enabled and state.battery_soc is not None:
+        if rule.soc_enabled and state.battery_soc is not None and rule.soc_operator:
             conditions.append(self._compare(state.battery_soc, rule.soc_operator, rule.soc_threshold_percent))
-        if rule.solar_enabled and state.solar_power_kw is not None:
+        if rule.solar_enabled and state.solar_power_kw is not None and rule.solar_operator:
             conditions.append(self._compare(state.solar_power_kw, rule.solar_operator, rule.solar_threshold_kw))
-        if rule.temp_enabled and device_temp is not None:
+        if rule.temp_enabled and device_temp is not None and rule.temp_operator:
             conditions.append(self._compare(device_temp, rule.temp_operator, rule.temp_threshold_c))
         if rule.time_enabled:
             conditions.append(self._in_time_window(rule.time_start, rule.time_end))

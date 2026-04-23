@@ -398,26 +398,56 @@ def _trace_rule(rule, state: RulesState, device_temp) -> RuleTrace:
     )
 
 
+@router.post("/dev/immersion-switch")
+async def immersion_switch(body: dict):
+    """Directly set an immersion switch state via HA. Used for manual testing.
+    Body: {device_id: int, state: bool}"""
+    from app.database import SessionLocal
+    from app.models.immersion import ImmersionDevice
+    from app.services.home_assistant import ha_client
+
+    device_id = body.get("device_id")
+    state = body.get("state")
+    if device_id is None or state is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="device_id and state required")
+
+    db = SessionLocal()
+    try:
+        device = db.query(ImmersionDevice).filter(ImmersionDevice.id == device_id).first()
+        if not device:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Device not found")
+        entity_id = device.switch_entity_id
+        device_name = device.name
+    finally:
+        db.close()
+
+    success = await ha_client.set_switch(entity_id, bool(state))
+    logger.info(f"[dev] Manual switch {device_name} ({entity_id}) → {'ON' if state else 'OFF'}: success={success}")
+    return {"success": success, "entity_id": entity_id, "state": state}
+
+
 @router.get("/dev/why", response_model=WhyResponse)
-def why():
+async def why():
     """Return a full trace of why the system made its last decisions.
     Reads latest optimization result + all immersion devices from DB,
-    re-evaluates rules engine in trace mode. No HA call required."""
+    re-evaluates rules engine in trace mode. Fetches live temp from HA
+    for any device that has a temp_sensor_entity_id configured."""
     from app.database import SessionLocal
     from app.models.optimization import OptimizationResult
     from app.models.prices import ElectricityPrice
     from app.models.immersion import ImmersionDevice
     from app.models.overrides import ManualOverride
+    from app.services.home_assistant import ha_client
     from app.utils import utcnow
 
     db = SessionLocal()
     try:
         now = utcnow()
 
-        # Latest LP result
         latest = db.query(OptimizationResult).order_by(OptimizationResult.timestamp.desc()).first()
 
-        # Current price
         price_row = (
             db.query(ElectricityPrice)
             .filter(ElectricityPrice.valid_from <= now, ElectricityPrice.valid_to >= now)
@@ -464,16 +494,19 @@ def why():
                 remaining = int((active_override.expires_at - now).total_seconds() / 60)
                 override_str = f"{'ON' if active_override.desired_state else 'OFF'} until {active_override.expires_at.isoformat()}Z ({remaining}min remaining, source={active_override.source})"
 
-            # We don't have live temp here (no HA call), use None
+            # Fetch live temp from HA if sensor is configured
             device_temp = None
+            if device.temp_sensor_entity_id:
+                try:
+                    device_temp = await ha_client.get_temperature(device.temp_sensor_entity_id)
+                except Exception:
+                    pass
 
             rules = sorted(device.smart_rules or [], key=lambda r: r.priority)
             rule_traces = [_trace_rule(r, state, device_temp) for r in rules if r.is_enabled]
-            # Also include disabled rules for visibility
             rule_traces += [_trace_rule(r, state, device_temp) for r in rules if not r.is_enabled]
             rule_traces.sort(key=lambda rt: rt.priority)
 
-            # Determine final decision (mirror rules_engine.evaluate logic)
             if active_override:
                 remaining = int((active_override.expires_at - now).total_seconds() / 60)
                 final = SimImmersionResult(
@@ -496,7 +529,7 @@ def why():
                 device_name=device.name,
                 device_id=device.id,
                 switch_entity_id=device.switch_entity_id,
-                temp_c=None,
+                temp_c=device_temp,
                 active_override=override_str,
                 final_decision=final,
                 rule_traces=rule_traces,

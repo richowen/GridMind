@@ -48,3 +48,7 @@ export interface WhyResponse {
 export async function fetchWhy():Promise<WhyResponse> {
   return api.get<WhyResponse>('/dev/why')
 }
+
+export async function switchImmersion(device_id:number, state:boolean):Promise<{success:boolean;entity_id:string;state:boolean}> {
+  return api.post('/dev/immersion-switch',{device_id,state})
+}
