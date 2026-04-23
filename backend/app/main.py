@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.core.scheduler import scheduler
-from app.routers import optimization, immersion, overrides, history, system
+from app.routers import optimization, immersion, overrides, history, system, dev
 from app.websocket.manager import manager
 
 logging.basicConfig(level=settings.log_level)
@@ -50,6 +50,7 @@ app.include_router(immersion.router, prefix="/api/v1")
 app.include_router(overrides.router, prefix="/api/v1")
 app.include_router(history.router, prefix="/api/v1")
 app.include_router(system.router, prefix="/api/v1")
+app.include_router(dev.router, prefix="/api/v1")
 
 
 @app.get("/health")

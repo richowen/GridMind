@@ -9,6 +9,7 @@ import Immersions from '@/pages/Immersions'
 import History from '@/pages/History'
 import Controls from '@/pages/Controls'
 import Settings from '@/pages/Settings'
+import DevSim from '@/pages/DevSim'
 import { useLiveState } from '@/hooks/useLiveState'
 
 /** The main app shell (sidebar + header + content). */
@@ -28,6 +29,7 @@ function AppShell() {
             <Route path="/history" element={<History />} />
             <Route path="/controls" element={<Controls />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/dev" element={<DevSim />} />
           </Routes>
         </main>
       </div>

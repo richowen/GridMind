@@ -1,0 +1,231 @@
+"""Stateless dev/simulate endpoint — runs LP optimizer and rules engine
+with all inputs provided in the request body. No DB, no HA required."""
+import time
+import logging
+from contextlib import contextmanager
+from datetime import timedelta
+from typing import List, Optional
+
+from fastapi import APIRouter
+import pulp
+
+import app.core.settings_cache as _sc
+from app.core.optimizer import PricePeriod
+from app.core.rules_engine import RulesEngine, SystemState as RulesState
+from app.schemas.dev import SimRequest, SimResponse, SimPeriodResult, SimImmersionResult
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["dev"])
+
+
+@contextmanager
+def _override_settings(overrides: dict):
+    """Temporarily replace the settings cache with caller-supplied values."""
+    old_cache = dict(_sc._cache)
+    old_time = _sc._cache_time
+    _sc._cache = {k: str(v) for k, v in overrides.items()}
+    _sc._cache_time = float("inf")
+    try:
+        yield
+    finally:
+        _sc._cache = old_cache
+        _sc._cache_time = old_time
+
+
+def _run_sim_lp(req: SimRequest, prices: List[PricePeriod]):
+    """Run LP, return (OptOutput, per-period variable dicts)."""
+    cap = req.battery_capacity_kwh
+    max_c = req.battery_max_charge_kw
+    max_d = req.battery_max_discharge_kw
+    eff = req.battery_efficiency
+    min_soc = req.battery_min_soc / 100.0
+    max_soc = req.battery_max_soc / 100.0
+    g_imp = req.grid_import_limit_kw
+    g_exp = req.grid_export_limit_kw
+    export_p = req.export_price_pence
+    load = req.assumed_load_kw
+    fc_thresh = req.force_charge_threshold_kw
+    fd_thresh = req.force_discharge_threshold_kw
+    fd_exp_min = req.force_discharge_export_min_kw
+
+    if req.live_charge_rate_kw and req.live_charge_rate_kw > 0:
+        max_c = min(max_c, req.live_charge_rate_kw)
+
+    n = min(len(prices), req.optimization_horizon_hours * 2)
+    periods = prices[:n]
+    pvals = [p.price_pence for p in periods]
+
+    prob = pulp.LpProblem("sim", pulp.LpMinimize)
+    gi = [pulp.LpVariable(f"gi_{t}", 0, g_imp) for t in range(n)]
+    ge = [pulp.LpVariable(f"ge_{t}", 0, g_exp) for t in range(n)]
+    ch = [pulp.LpVariable(f"ch_{t}", 0, max_c) for t in range(n)]
+    di = [pulp.LpVariable(f"di_{t}", 0, max_d) for t in range(n)]
+    soc = [pulp.LpVariable(f"soc_{t}", min_soc*cap, max_soc*cap) for t in range(n)]
+
+    prob += pulp.lpSum(
+        gi[t]*pvals[t]*0.5 - ge[t]*export_p*0.5 for t in range(n)
+    )
+
+    init_soc = req.battery_soc / 100.0 * cap
+    inv_eff = 1.0 / eff
+    for t in range(n):
+        prob += load + ch[t] + ge[t] == req.solar_power_kw + di[t] + gi[t]
+        prev = init_soc if t == 0 else soc[t-1]
+        prob += soc[t] == prev + ch[t]*eff*0.5 - di[t]*inv_eff*0.5
+
+    prob.solve(pulp.PULP_CBC_CMD(msg=0))
+    status = pulp.LpStatus[prob.status]
+
+    period_results = []
+    for t in range(n):
+        soc_kwh = pulp.value(soc[t]) or 0.0
+        period_results.append(SimPeriodResult(
+            slot=t,
+            valid_from=periods[t].valid_from.isoformat() + "Z",
+            price_pence=pvals[t],
+            solar_kw=req.solar_power_kw,
+            charge_kw=round(pulp.value(ch[t]) or 0.0, 3),
+            discharge_kw=round(pulp.value(di[t]) or 0.0, 3),
+            grid_import_kw=round(pulp.value(gi[t]) or 0.0, 3),
+            grid_export_kw=round(pulp.value(ge[t]) or 0.0, 3),
+            soc_kwh=round(soc_kwh, 3),
+            soc_pct=round(soc_kwh / cap * 100, 1) if cap > 0 else 0.0,
+        ))
+
+    if status != "Optimal":
+        return "Self Use", "LP infeasible", "infeasible", None, period_results
+
+    c0 = pulp.value(ch[0]) or 0.0
+    d0 = pulp.value(di[0]) or 0.0
+    e0 = pulp.value(ge[0]) or 0.0
+    obj = pulp.value(prob.objective)
+
+    if c0 >= fc_thresh:
+        mode = "Force Charge"
+        reason = f"LP: charging {c0:.2f}kW at {pvals[0]:.1f}p (thresh {fc_thresh}kW)"
+    elif d0 >= fd_thresh and e0 > fd_exp_min:
+        mode = "Force Discharge"
+        reason = f"LP: discharging {d0:.2f}kW to grid at {pvals[0]:.1f}p"
+    else:
+        mode = "Self Use"
+        reason = f"LP: self-use at {pvals[0]:.1f}p"
+
+    return mode, reason, "optimal", obj, period_results
+
+
+def _run_immersion_sim(req: SimRequest) -> Optional[SimImmersionResult]:
+    if not req.immersion:
+        return None
+
+    from datetime import time as dtime
+    from unittest.mock import MagicMock
+
+    imm = req.immersion
+    state = RulesState(
+        battery_soc=imm.battery_soc,
+        solar_power_kw=imm.solar_power_kw,
+        current_price_pence=imm.current_price_pence,
+    )
+
+    rules = []
+    for r in imm.rules:
+        mock = MagicMock()
+        mock.is_enabled = r.is_enabled
+        mock.priority = r.priority
+        mock.action = r.action
+        mock.rule_name = r.rule_name
+        mock.logic_operator = r.logic_operator
+        mock.price_enabled = r.price_enabled
+        mock.price_operator = r.price_operator
+        mock.price_threshold_pence = r.price_threshold_pence
+        mock.soc_enabled = r.soc_enabled
+        mock.soc_operator = r.soc_operator
+        mock.soc_threshold_percent = r.soc_threshold_percent
+        mock.solar_enabled = r.solar_enabled
+        mock.solar_operator = r.solar_operator
+        mock.solar_threshold_kw = r.solar_threshold_kw
+        mock.temp_enabled = r.temp_enabled
+        mock.temp_operator = r.temp_operator
+        mock.temp_threshold_c = r.temp_threshold_c
+        mock.time_enabled = r.time_enabled
+        try:
+            h, m = r.time_start.split(":")
+            mock.time_start = dtime(int(h), int(m))
+            h2, m2 = r.time_end.split(":")
+            mock.time_end = dtime(int(h2), int(m2))
+        except Exception:
+            mock.time_start = dtime(0, 0)
+            mock.time_end = dtime(23, 59)
+        rules.append(mock)
+
+    device = MagicMock()
+    engine = RulesEngine()
+    decision = engine.evaluate(
+        device=device,
+        state=state,
+        current_temp=imm.current_temp_c,
+        smart_rules=rules,
+    )
+    return SimImmersionResult(action=decision.action, source=decision.source, reason=decision.reason)
+
+
+@router.post("/dev/simulate", response_model=SimResponse)
+def simulate(req: SimRequest):
+    """Run LP optimizer + optional rules engine with caller-supplied inputs.
+    No database or Home Assistant connection required."""
+    settings_override = {
+        "battery_capacity_kwh": req.battery_capacity_kwh,
+        "battery_max_charge_kw": req.battery_max_charge_kw,
+        "battery_max_discharge_kw": req.battery_max_discharge_kw,
+        "battery_efficiency": req.battery_efficiency,
+        "battery_min_soc": req.battery_min_soc,
+        "battery_max_soc": req.battery_max_soc,
+        "battery_voltage_v": req.battery_voltage_v,
+        "grid_import_limit_kw": req.grid_import_limit_kw,
+        "grid_export_limit_kw": req.grid_export_limit_kw,
+        "export_price_pence": req.export_price_pence,
+        "assumed_load_kw": req.assumed_load_kw,
+        "force_charge_threshold_kw": req.force_charge_threshold_kw,
+        "force_discharge_threshold_kw": req.force_discharge_threshold_kw,
+        "force_discharge_export_min_kw": req.force_discharge_export_min_kw,
+        "optimization_horizon_hours": req.optimization_horizon_hours,
+    }
+
+    t0 = time.time()
+    # Use live voltage if supplied and valid, else fall back to configured setting
+    _volt = (req.live_battery_voltage_v or 0) if (req.live_battery_voltage_v and req.live_battery_voltage_v > 10) else req.battery_voltage_v
+    max_d_amps = int(req.battery_max_discharge_kw * 1000 / _volt)
+
+    if not req.prices:
+        return SimResponse(
+            recommended_mode="Self Use",
+            decision_reason="No prices provided",
+            optimization_status="no_prices",
+            objective_value=None,
+            optimization_time_ms=0,
+            recommended_discharge_current=max_d_amps,
+            periods=[],
+            immersion=_run_immersion_sim(req),
+        )
+
+    prices = []
+    for i, p in enumerate(req.prices):
+        valid_from = p.valid_from.replace(tzinfo=None)
+        valid_to = valid_from + timedelta(minutes=30)
+        prices.append(PricePeriod(valid_from=valid_from, valid_to=valid_to, price_pence=p.price_pence))
+
+    with _override_settings(settings_override):
+        mode, reason, status, obj, periods = _run_sim_lp(req, prices)
+
+    elapsed_ms = (time.time() - t0) * 1000
+
+    return SimResponse(
+        recommended_mode=mode,
+        decision_reason=reason,
+        optimization_status=status,
+        objective_value=round(obj, 4) if obj is not None else None,
+        optimization_time_ms=round(elapsed_ms, 1),
+        recommended_discharge_current=max_d_amps,
+        periods=periods,
+        immersion=_run_immersion_sim(req),
+    )
