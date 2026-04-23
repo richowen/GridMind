@@ -35,10 +35,11 @@ export default function PriceGrid({prices,onChange}:Props){
   const loadLive=useCallback(async()=>{
     setLoading(true)
     try{
-      const r=await api.get<any>('/prices/upcoming?limit=48')
-      const data:any[]=r?.prices??r??[]
+      const data=await api.get<any[]>('/prices/current?hours=24')
       if(Array.isArray(data)&&data.length){
         onChange(data.map((p:any)=>({valid_from:p.valid_from,price_pence:p.price_pence})))
+      }else{
+        console.warn('No prices returned from /prices/current',data)
       }
     }catch(e){console.warn('Could not load live prices',e)}
     finally{setLoading(false)}
