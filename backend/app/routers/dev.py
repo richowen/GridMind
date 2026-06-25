@@ -440,11 +440,17 @@ async def why():
     from app.models.immersion import ImmersionDevice
     from app.models.overrides import ManualOverride
     from app.services.home_assistant import ha_client
+    from app.services.axle import axle_client
+    from app.core.settings_cache import get_setting_bool
     from app.utils import utcnow
 
     db = SessionLocal()
     try:
         now = utcnow()
+
+        # Fetch active VPP event once for both readings display and rule evaluation
+        vpp_event = await axle_client.get_active_event()
+        vpp_event_active = vpp_event is not None and vpp_event[0] <= now <= vpp_event[1]
 
         latest = db.query(OptimizationResult).order_by(OptimizationResult.timestamp.desc()).first()
 
@@ -464,6 +470,9 @@ async def why():
             "current_price_pence": current_price,
             "last_optimization": latest.timestamp.isoformat() + "Z" if latest else None,
             "last_mode": latest.recommended_mode if latest else None,
+            "vpp_event_active": vpp_event_active,
+            "vpp_event_start": vpp_event[0].isoformat() + "Z" if vpp_event else None,
+            "vpp_event_end": vpp_event[1].isoformat() + "Z" if vpp_event else None,
         }
 
         lp = LpDecisionTrace(
@@ -513,6 +522,12 @@ async def why():
                     action=active_override.desired_state,
                     source="manual_override",
                     reason=f"Manual override active ({remaining}min remaining)",
+                )
+            elif vpp_event_active and get_setting_bool("disable_immersion_during_vpp", True):
+                final = SimImmersionResult(
+                    action=False,
+                    source="vpp_guard",
+                    reason="Immersion disabled during active VPP export event",
                 )
             else:
                 fired = next((rt for rt in rule_traces if rt.matched), None)

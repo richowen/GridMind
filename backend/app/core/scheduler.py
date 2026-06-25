@@ -21,6 +21,18 @@ from app.core.settings_cache import get_setting_int
 logger = logging.getLogger(__name__)
 
 
+def _build_vpp_event_payload(vpp_event: Optional[tuple[datetime, datetime]], now: datetime) -> Optional[dict]:
+    if vpp_event is None:
+        return None
+    start, end = vpp_event
+    return {
+        "is_active": now >= start and now <= end,
+        "is_upcoming": now < start,
+        "start": start.isoformat() + "Z",
+        "end": end.isoformat() + "Z",
+    }
+
+
 def _build_solar_forecast_profile(
     prices,
     solar_now_kw: float,
@@ -103,6 +115,8 @@ def _build_scheduler() -> AsyncIOScheduler:
 
 async def optimization_loop():
     """Every N min: get system state, run LP optimizer, apply to HA, store results."""
+    vpp_event = None
+    now = utcnow()
     try:
         from app.core.optimizer import OptimizationInput, run_optimization
         from app.core.action_executor import action_executor
@@ -166,11 +180,26 @@ async def optimization_loop():
                     f"{prices_rows[0].valid_from.isoformat() if prices_rows else 'none'}"
                 )
 
+            from app.services.axle import axle_client
+            from app.core.settings_cache import get_setting_float
+
+            vpp_event = await axle_client.get_active_event()
+            default_export_price = get_setting_float("export_price_pence", 15.0)
+            vpp_export_price = get_setting_float("axle_vpp_export_price_pence", 100.0)
+
             from app.core.optimizer import PricePeriod
-            price_periods = [
-                PricePeriod(p.valid_from, p.valid_to, p.price_pence)
-                for p in prices_rows
-            ]
+            price_periods = []
+            for p in prices_rows:
+                is_vpp_slot = vpp_event is not None and p.valid_from < vpp_event[1] and p.valid_to > vpp_event[0]
+                export_rate = vpp_export_price if is_vpp_slot else default_export_price
+                price_periods.append(
+                    PricePeriod(
+                        valid_from=p.valid_from,
+                        valid_to=p.valid_to,
+                        price_pence=p.price_pence,
+                        export_price_pence=export_rate,
+                    )
+                )
 
             # Build per-period solar forecast profile from remaining-today kWh
             solar_profile = _build_solar_forecast_profile(
@@ -253,6 +282,7 @@ async def optimization_loop():
                 "recommended_mode": result.recommended_mode,
                 "decision_reason": result.decision_reason,
                 "live_charge_rate_kw": live_charge_rate,
+                "vpp_event": _build_vpp_event_payload(vpp_event, now),
                 "last_updated": utcnow().isoformat() + "Z",
             },
         })
@@ -358,6 +388,11 @@ async def immersion_evaluation():
 
             soc = await ha_client.get_battery_soc()
             solar = await ha_client.get_solar_power()
+
+            # Fetch active VPP event
+            from app.services.axle import axle_client
+            vpp_event = await axle_client.get_active_event()
+            vpp_event_active = vpp_event is not None and vpp_event[0] <= now <= vpp_event[1]
 
             state = RulesState(
                 battery_soc=soc,
@@ -498,6 +533,7 @@ async def immersion_evaluation():
                     active_override=active_override,
                     temp_targets=device.temp_targets,
                     smart_rules=device.smart_rules,
+                    vpp_event_active=vpp_event_active,
                 )
 
                 await action_executor.apply_immersion(device, decision, db=db)

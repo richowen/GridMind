@@ -35,7 +35,7 @@ def make_varying_prices(values, start_hour=0):
 DEFAULTS = {
     "battery_capacity_kwh": "20.0",
     "battery_max_charge_kw": "10.5",
-    "battery_max_discharge_kw": "5.0",
+    "battery_max_discharge_kw": "10.0",
     "battery_efficiency": "0.95",
     "battery_min_soc": "10",
     "battery_max_soc": "100",

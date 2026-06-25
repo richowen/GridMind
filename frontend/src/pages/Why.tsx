@@ -232,6 +232,23 @@ export default function Why(){
               <div><span className="text-muted-foreground">Last opt: </span><span className="font-mono text-xs">{fmtTime(r?.last_optimization as string)}</span></div>
               <div><span className="text-muted-foreground">Last mode: </span><span className="font-mono text-xs">{r?.last_mode??'—'}</span></div>
             </div>
+            {r?.vpp_event_active && (
+              <div className="mt-3 flex items-center gap-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                <span className="font-bold uppercase tracking-wide">VPP Active</span>
+                <span className="text-red-300">
+                  {fmtTime(r.vpp_event_start as string)} – {fmtTime(r.vpp_event_end as string)}
+                  {' '}— Immersion disabled
+                </span>
+              </div>
+            )}
+            {!r?.vpp_event_active && r?.vpp_event_start && (
+              <div className="mt-3 flex items-center gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+                <span className="font-bold uppercase tracking-wide">VPP Upcoming</span>
+                <span className="text-amber-300">
+                  {fmtTime(r.vpp_event_start as string)} – {fmtTime(r.vpp_event_end as string)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* LP Decision */}

@@ -2,6 +2,13 @@
 
 export type PriceClassification = 'negative' | 'cheap' | 'normal' | 'expensive'
 
+export interface VppEvent {
+  is_active: boolean
+  is_upcoming: boolean
+  start: string
+  end: string
+}
+
 export interface LiveState {
   battery_soc: number | null
   battery_mode: string | null
@@ -13,6 +20,7 @@ export interface LiveState {
   recommended_mode: string | null
   decision_reason: string | null
   live_charge_rate_kw: number | null
+  vpp_event: VppEvent | null
   last_updated: string | null
 }
 

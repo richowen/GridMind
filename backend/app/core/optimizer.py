@@ -29,6 +29,7 @@ class PricePeriod:
     valid_from: datetime
     valid_to: datetime
     price_pence: float
+    export_price_pence: Optional[float] = None
 
 
 @dataclass
@@ -183,7 +184,7 @@ class BatteryOptimizer:
         # Objective: minimise net cost (FIX 1: fixed export price)
         prob += pulp.lpSum([
             grid_import[t] * period_prices[t] * 0.5   # Import cost (0.5 hr periods)
-            - grid_export[t] * export_price_pence * 0.5  # Export revenue (fixed SEG rate)
+            - grid_export[t] * (periods[t].export_price_pence if periods[t].export_price_pence is not None else export_price_pence) * 0.5  # Export revenue (fixed SEG rate or VPP premium)
             for t in range(num_periods)
         ])
 

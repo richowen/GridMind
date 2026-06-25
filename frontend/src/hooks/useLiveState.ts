@@ -15,6 +15,7 @@ const INITIAL_STATE: LiveState = {
   recommended_mode: null,
   decision_reason: null,
   live_charge_rate_kw: null,
+  vpp_event: null,
   last_updated: null,
 }
 

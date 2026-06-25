@@ -8,6 +8,7 @@ from operator import eq, ge, gt, le, lt
 from typing import Optional
 
 from app.utils import utcnow
+from app.core.settings_cache import get_setting_bool
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class RulesEngine:
         active_override=None,
         temp_targets=None,
         smart_rules=None,
+        vpp_event_active: bool = False,
     ) -> ImmersionDecision:
         """Evaluate rules in priority order. Returns first matching decision."""
 
@@ -51,6 +53,15 @@ class RulesEngine:
                 source="manual_override",
                 reason=f"Manual override active ({remaining}min remaining)",
             )
+
+        # PRIORITY 1b: VPP Guard (if enabled, overrides everything except manual override)
+        if vpp_event_active:
+            if get_setting_bool("disable_immersion_during_vpp", True):
+                return ImmersionDecision(
+                    action=False,
+                    source="vpp_guard",
+                    reason="Immersion disabled during active VPP export event",
+                )
 
         # PRIORITY 2: Temperature Targets
         for target in (temp_targets or []):

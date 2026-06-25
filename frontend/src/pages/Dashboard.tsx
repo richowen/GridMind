@@ -10,6 +10,7 @@ import PriceCard from '@/components/dashboard/PriceCard'
 import ModeCard from '@/components/dashboard/ModeCard'
 import PriceSparkline from '@/components/charts/PriceSparkline'
 import RecentDecisions from '@/components/dashboard/RecentDecisions'
+import VppEventBanner from '@/components/dashboard/VppEventBanner'
 
 export default function Dashboard() {
   const { state } = useLiveState()
@@ -28,6 +29,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {state.vpp_event && <VppEventBanner event={state.vpp_event} />}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <BatteryCard soc={state.battery_soc} mode={state.battery_mode} />
         <SolarCard
