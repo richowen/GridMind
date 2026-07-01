@@ -4,11 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useLiveState } from '@/hooks/useLiveState'
 import { optimizationApi } from '@/api/optimization'
 import { historyApi } from '@/api/history'
+import Card from '@/components/ui/Card'
 import BatteryCard from '@/components/dashboard/BatteryCard'
 import SolarCard from '@/components/dashboard/SolarCard'
 import PriceCard from '@/components/dashboard/PriceCard'
 import ModeCard from '@/components/dashboard/ModeCard'
-import PriceSparkline from '@/components/charts/PriceSparkline'
+import PriceList from '@/components/prices/PriceList'
 import RecentDecisions from '@/components/dashboard/RecentDecisions'
 import VppEventBanner from '@/components/dashboard/VppEventBanner'
 
@@ -47,19 +48,19 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">
-          Next 12 Hours — Price Forecast
+      <Card>
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+          Next 6 Hours
         </h2>
-        <PriceSparkline prices={prices ?? []} />
-      </div>
+        <PriceList prices={prices ?? []} vppEvent={state.vpp_event} limit={12} />
+      </Card>
 
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">
+      <Card>
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
           Recent Decisions
         </h2>
         <RecentDecisions decisions={decisions ?? []} />
-      </div>
+      </Card>
     </div>
   )
 }

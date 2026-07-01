@@ -131,6 +131,106 @@ def test_vpp_slot_overlap_detection():
     assert p4_start < vpp_end and p4_end > vpp_start
 
 
+def test_vpp_precharge_forces_charge_with_lead_time():
+    """Low SOC + upcoming VPP event with enough lead time should hard-constrain
+    the LP to charge up to the SOC required to sustain a full-length export.
+    """
+    base = datetime(2026, 4, 23, 18, 0, 0)
+    # 6 periods (3 hours) of lead time, then a 1hr VPP event at 21:00-22:00.
+    # Period 0 is the uniquely cheapest slot so the cost-minimising LP must
+    # front-load charging there rather than spreading it arbitrarily across
+    # equally-priced periods (which would leave charge_0 ambiguous).
+    prices = []
+    for i in range(6):
+        prices.append(PricePeriod(
+            base + timedelta(minutes=30 * i),
+            base + timedelta(minutes=30 * (i + 1)),
+            2.0 if i == 0 else 10.0, 15.0,
+        ))
+    vpp_start = base + timedelta(hours=3)
+    vpp_end = vpp_start + timedelta(hours=1)
+    for i in range(6, 10):
+        prices.append(PricePeriod(
+            base + timedelta(minutes=30 * i),
+            base + timedelta(minutes=30 * (i + 1)),
+            30.0, 100.0 if (base + timedelta(minutes=30*i)) < vpp_end and (base + timedelta(minutes=30*(i+1))) > vpp_start else 15.0,
+        ))
+
+    inp = OptimizationInput(
+        battery_soc=15.0,  # Low SOC, like the real-world failure
+        solar_power_kw=0.0,
+        prices=prices,
+        vpp_event=(vpp_start, vpp_end),
+    )
+    res = BatteryOptimizer().optimize(inp)
+    assert res.optimization_status == "optimal"
+    # With 3 hours of cheap lead time and a low battery, the optimizer must
+    # Force Charge now to reach the pre-charge SOC target before the event.
+    assert res.recommended_mode == "Force Charge"
+
+
+def test_vpp_precharge_clips_gracefully_with_short_lead_time():
+    """Very short lead time (or no lead time) before the VPP event must not make
+    the LP infeasible — the required SOC is clipped to what's achievable.
+    """
+    base = datetime(2026, 4, 23, 21, 0, 0)
+    # VPP event starts immediately (period 0 is the event) — zero lead time.
+    vpp_start = base
+    vpp_end = base + timedelta(hours=1)
+    prices = [
+        PricePeriod(base, base + timedelta(minutes=30), 30.0, 100.0),
+        PricePeriod(base + timedelta(minutes=30), base + timedelta(hours=1), 30.0, 100.0),
+        PricePeriod(base + timedelta(hours=1), base + timedelta(minutes=90), 15.0, 15.0),
+    ]
+    inp = OptimizationInput(
+        battery_soc=15.0,
+        solar_power_kw=0.0,
+        prices=prices,
+        vpp_event=(vpp_start, vpp_end),
+    )
+    res = BatteryOptimizer().optimize(inp)
+    # No period exists fully before the event (target_idx is None) — LP must
+    # still solve normally (no hard constraint added), not go infeasible.
+    assert res.optimization_status == "optimal"
+
+
+def test_vpp_precharge_disabled_setting_no_constraint():
+    """axle_vpp_precharge_enabled=false should skip the hard constraint entirely,
+    falling back to price-incentive-only behaviour (regression safety)."""
+    sc._cache["axle_vpp_precharge_enabled"] = "false"
+    base = datetime(2026, 4, 23, 18, 0, 0)
+    prices = []
+    for i in range(6):
+        prices.append(PricePeriod(
+            base + timedelta(minutes=30 * i),
+            base + timedelta(minutes=30 * (i + 1)),
+            15.0, 15.0,
+        ))
+    vpp_start = base + timedelta(hours=3)
+    vpp_end = vpp_start + timedelta(hours=1)
+    inp = OptimizationInput(
+        battery_soc=15.0,
+        solar_power_kw=0.0,
+        prices=prices,
+        vpp_event=(vpp_start, vpp_end),
+    )
+    res = BatteryOptimizer().optimize(inp)
+    assert res.optimization_status == "optimal"
+    sc._cache["axle_vpp_precharge_enabled"] = "true"  # restore for other tests
+
+
+def test_no_vpp_event_unaffected():
+    """No VPP event present — behaviour must be unchanged (regression safety)."""
+    base = datetime(2026, 4, 23, 0, 0, 0)
+    prices = [
+        PricePeriod(base + timedelta(minutes=30 * i), base + timedelta(minutes=30 * (i + 1)), 15.0, 15.0)
+        for i in range(10)
+    ]
+    inp = OptimizationInput(battery_soc=50.0, solar_power_kw=0.0, prices=prices)
+    res = BatteryOptimizer().optimize(inp)
+    assert res.optimization_status == "optimal"
+
+
 def test_vpp_guard_disables_immersion():
     """The Rules Engine VPP Guard blocks immersion activation during active VPP events when configured."""
     engine = RulesEngine()

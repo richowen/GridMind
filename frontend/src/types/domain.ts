@@ -66,15 +66,20 @@ export function formatDaysOfWeek(days: DayOfWeek[]): string {
   return days.map(d => DAY_NAMES[d]).join(', ')
 }
 
-export function getPriceColor(classification: PriceClassification | null): string {
+/** Maps a price classification to a Pill variant — used instead of a hex color
+ * palette so classification state stays consistent with the monochrome+signal
+ * design system (see docs/DESIGN.md). */
+export function getPriceVariant(classification: PriceClassification | null): 'success' | 'outline' | 'danger' | 'neutral' {
   switch (classification) {
-    case 'negative': return '#22c55e'   // green
-    case 'cheap': return '#eab308'      // yellow
-    case 'expensive': return '#ef4444'  // red
-    default: return '#3b82f6'           // blue (normal)
+    case 'negative': return 'success'
+    case 'cheap': return 'success'
+    case 'expensive': return 'danger'
+    default: return 'neutral'
   }
 }
 
 // Note: classifyPrice() removed — use the `classification` field returned by the
 // backend on every price record instead. Frontend thresholds would diverge from
 // the DB settings that users configure in the Settings page.
+
+

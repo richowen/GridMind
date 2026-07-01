@@ -6,6 +6,7 @@ import {
 } from '@/api/dev'
 import PriceGrid from '@/components/dev/PriceGrid'
 import ResultChart from '@/components/dev/ResultChart'
+import Button from '@/components/ui/Button'
 
 const OPERATORS=['<','<=','>','>=','==']
 
@@ -34,9 +35,9 @@ function Section({title,children}:{title:string;children:ReactNode}){
 }
 
 function modeBadge(mode:string){
-  if(mode==='Force Charge') return 'bg-green-500/20 text-green-300 border-green-500/30'
-  if(mode==='Force Discharge') return 'bg-red-500/20 text-red-300 border-red-500/30'
-  return 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+  if(mode==='Force Charge') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25'
+  if(mode==='Force Discharge') return 'bg-red-500/15 text-red-300 border-red-500/25'
+  return 'bg-signal/15 text-signal border-signal/25'
 }
 
 const DEFAULT_RULE:SimImmersionRule={
@@ -111,19 +112,17 @@ export default function DevSim(){
     <div className="space-y-4 max-w-6xl mx-auto pb-12">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Dev Simulator</h1>
+          <h1 className="font-display text-2xl tracking-display text-foreground">Dev Simulator</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Run LP optimizer and rules engine with custom inputs — no HA or DB required</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={snap} disabled={snapping}
-            className="px-4 py-2 rounded-lg border border-border bg-card font-medium text-sm hover:bg-accent disabled:opacity-50 transition-colors"
+          <Button variant="outline" onClick={snap} disabled={snapping}
             title="Load current system state, settings and live prices from the DB">
-            {snapping?'Loading…':'📸 Load Snapshot'}
-          </button>
-          <button onClick={run} disabled={loading}
-            className="px-5 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/80 disabled:opacity-50 transition-colors">
-            {loading?'Running…':'▶ Run Simulation'}
-          </button>
+            {snapping?'Loading…':'Load Snapshot'}
+          </Button>
+          <Button variant="signal" onClick={run} disabled={loading}>
+            {loading?'Running…':'Run Simulation'}
+          </Button>
         </div>
       </div>
 

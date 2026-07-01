@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { settingsApi } from '@/api/settings'
 import type { SettingOut } from '@/types/api'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
 
 const SECTION_LABELS: Record<string, string> = {
   battery: 'Battery Configuration',
@@ -61,14 +63,11 @@ export default function Settings() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Settings</h1>
+        <h1 className="font-display text-2xl tracking-display text-foreground">Settings</h1>
         {hasEdits && (
-          <button
-            onClick={() => saveMutation.mutate()}
-            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded hover:opacity-90"
-          >
+          <Button variant="signal" onClick={() => saveMutation.mutate()}>
             Save Changes
-          </button>
+          </Button>
         )}
       </div>
 
@@ -77,8 +76,8 @@ export default function Settings() {
         if (!sectionSettings.length) return null
 
         return (
-          <div key={category} className="rounded-lg border border-border bg-card p-4">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">{label}</h2>
+          <Card key={category}>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">{label}</h2>
             <div className="space-y-3">
               {sectionSettings.map((setting: SettingOut) => (
                 <div key={setting.key} className="flex items-center gap-4">
@@ -93,7 +92,10 @@ export default function Settings() {
                       setting.key,
                       setting.value_type === 'bool' ? String(e.target.checked) : e.target.value
                     )}
-                    className="flex-1 bg-secondary border border-border rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    className={setting.value_type === 'bool'
+                      ? 'h-4 w-4 accent-signal'
+                      : 'flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-signal'
+                    }
                   />
                 </div>
               ))}
@@ -102,11 +104,11 @@ export default function Settings() {
             {/* Connection test buttons */}
             {category === 'ha' && (
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={testHA} className="text-xs px-3 py-1.5 bg-secondary rounded hover:bg-accent">
+                <Button variant="outline" className="text-xs px-3 py-1.5" onClick={testHA}>
                   Test HA Connection
-                </button>
+                </Button>
                 {testResults.ha && (
-                  <span className={`text-xs ${testResults.ha.success ? 'text-green-400' : 'text-red-400'}`}>
+                  <span className={`text-xs ${testResults.ha.success ? 'text-emerald-400' : 'text-red-400'}`}>
                     {testResults.ha.message}
                   </span>
                 )}
@@ -114,11 +116,11 @@ export default function Settings() {
             )}
             {category === 'octopus' && (
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={testOctopus} className="text-xs px-3 py-1.5 bg-secondary rounded hover:bg-accent">
+                <Button variant="outline" className="text-xs px-3 py-1.5" onClick={testOctopus}>
                   Test Octopus API
-                </button>
+                </Button>
                 {testResults.octopus && (
-                  <span className={`text-xs ${testResults.octopus.success ? 'text-green-400' : 'text-red-400'}`}>
+                  <span className={`text-xs ${testResults.octopus.success ? 'text-emerald-400' : 'text-red-400'}`}>
                     {testResults.octopus.message}
                   </span>
                 )}
@@ -126,17 +128,17 @@ export default function Settings() {
             )}
             {category === 'influxdb' && (
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={testInflux} className="text-xs px-3 py-1.5 bg-secondary rounded hover:bg-accent">
+                <Button variant="outline" className="text-xs px-3 py-1.5" onClick={testInflux}>
                   Test InfluxDB
-                </button>
+                </Button>
                 {testResults.influx && (
-                  <span className={`text-xs ${testResults.influx.success ? 'text-green-400' : 'text-red-400'}`}>
+                  <span className={`text-xs ${testResults.influx.success ? 'text-emerald-400' : 'text-red-400'}`}>
                     {testResults.influx.message}
                   </span>
                 )}
               </div>
             )}
-          </div>
+          </Card>
         )
       })}
     </div>

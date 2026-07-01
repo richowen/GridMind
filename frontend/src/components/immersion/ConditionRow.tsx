@@ -33,12 +33,12 @@ export function ConditionRow({
         type="checkbox"
         checked={enabled}
         onChange={e => onToggle(e.target.checked)}
-        className="accent-primary"
+        className="accent-signal"
       />
-      <span className="text-sm w-16 shrink-0">{label}</span>
+      <span className="text-sm w-16 shrink-0 text-foreground">{label}</span>
       <select
         disabled={!enabled}
-        className="bg-secondary border border-border rounded px-2 py-1 text-sm disabled:opacity-40"
+        className="bg-background border border-border rounded-lg px-2 py-1 text-sm disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-signal"
         value={operator}
         onChange={e => onOperator(e.target.value)}
       >
@@ -50,7 +50,7 @@ export function ConditionRow({
         type="number"
         step={step}
         disabled={!enabled}
-        className="w-20 bg-secondary border border-border rounded px-2 py-1 text-sm disabled:opacity-40"
+        className="w-20 bg-background border border-border rounded-lg px-2 py-1 text-sm disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-signal"
         value={value}
         onChange={e => onValue(Number(e.target.value))}
       />
@@ -83,13 +83,13 @@ export function TimeConditionRow({
         type="checkbox"
         checked={enabled}
         onChange={e => onToggle(e.target.checked)}
-        className="accent-primary"
+        className="accent-signal"
       />
-      <span className="text-sm w-16 shrink-0">Time</span>
+      <span className="text-sm w-16 shrink-0 text-foreground">Time</span>
       <input
         type="time"
         disabled={!enabled}
-        className="bg-secondary border border-border rounded px-2 py-1 text-sm disabled:opacity-40"
+        className="bg-background border border-border rounded-lg px-2 py-1 text-sm disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-signal"
         value={timeStart}
         onChange={e => onTimeStart(e.target.value)}
       />
@@ -97,7 +97,7 @@ export function TimeConditionRow({
       <input
         type="time"
         disabled={!enabled}
-        className="bg-secondary border border-border rounded px-2 py-1 text-sm disabled:opacity-40"
+        className="bg-background border border-border rounded-lg px-2 py-1 text-sm disabled:opacity-40 focus:outline-none focus:ring-1 focus:ring-signal"
         value={timeEnd}
         onChange={e => onTimeEnd(e.target.value)}
       />

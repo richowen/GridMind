@@ -17,9 +17,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from app.core.settings_cache import get_setting_float, get_setting_int
+from app.core.settings_cache import get_setting_bool, get_setting_float, get_setting_int
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,9 @@ class OptimizationInput:
     # Live battery voltage from sensor.foxinverter_invbatvolt (V).
     # When provided, used for kW→amps conversion instead of the static battery_voltage_v setting.
     live_battery_voltage_v: Optional[float] = field(default=None)
+    # Active/upcoming Axle VPP export event window (start_utc, end_utc), naive UTC
+    # datetimes matching the price periods. None if no event is scheduled.
+    vpp_event: Optional[Tuple[datetime, datetime]] = field(default=None)
 
 
 @dataclass
@@ -146,6 +149,48 @@ class BatteryOptimizer:
         periods = inp.prices[:num_periods]
         period_prices = [p.price_pence for p in periods]
 
+        # ── VPP pre-charge guarantee ─────────────────────────────────────────
+        # A price incentive alone doesn't guarantee the battery is full enough
+        # to sustain a full-length export at grid_export_limit_kw for the whole
+        # VPP event. Compute the SOC required to do so and, if there's still
+        # lead time before the event starts, add it as a hard constraint on
+        # the period immediately preceding the event (clipped to what's
+        # actually achievable so this can never make the LP infeasible).
+        vpp_precharge_target_idx: Optional[int] = None
+        vpp_precharge_required_soc: Optional[float] = None
+        if inp.vpp_event and get_setting_bool("axle_vpp_precharge_enabled", True):
+            vpp_start, vpp_end = inp.vpp_event
+            event_hours = (vpp_end - vpp_start).total_seconds() / 3600.0
+            if event_hours > 0:
+                # Find the last period fully before the event starts.
+                target_idx = None
+                for t, p in enumerate(periods):
+                    if p.valid_to <= vpp_start:
+                        target_idx = t
+                    else:
+                        break
+                if target_idx is not None:
+                    buffer_pct = get_setting_float("axle_vpp_precharge_buffer_percent", 5.0)
+                    # Energy the battery must supply: sustaining grid_export_limit_kw
+                    # export plus the assumed household load, for the event duration,
+                    # accounting for discharge efficiency losses.
+                    required_energy_kwh = (grid_export_limit + assumed_load_kw) / efficiency * event_hours
+                    required_soc_kwh = (
+                        min_soc * battery_capacity
+                        + required_energy_kwh
+                        + (buffer_pct / 100.0) * battery_capacity
+                    )
+                    # Feasibility clip: never require more than max_soc, and never
+                    # more than could plausibly be charged to by target_idx (assuming
+                    # max charge rate every period from now until then).
+                    current_soc_kwh = inp.battery_soc / 100.0 * battery_capacity
+                    max_chargeable = current_soc_kwh + sum(
+                        effective_max_charge_kw * efficiency * 0.5 for _ in range(target_idx + 1)
+                    )
+                    required_soc_kwh = min(required_soc_kwh, max_soc * battery_capacity, max_chargeable)
+                    vpp_precharge_target_idx = target_idx
+                    vpp_precharge_required_soc = required_soc_kwh
+
         # FIX (4): Per-period solar profile — use forecast if provided, else constant
         def _solar_for_period(t: int) -> float:
             if inp.solar_forecast_profile and t < len(inp.solar_forecast_profile):
@@ -221,6 +266,10 @@ class BatteryOptimizer:
                     - discharge[t] * inv_eff * 0.5
                 )
 
+        # Hard SOC floor constraint ahead of a VPP export event (see calculation above).
+        if vpp_precharge_target_idx is not None and vpp_precharge_required_soc is not None:
+            prob += soc[vpp_precharge_target_idx] >= vpp_precharge_required_soc
+
         # ── Solve ─────────────────────────────────────────────────────────────
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
@@ -241,12 +290,21 @@ class BatteryOptimizer:
         export_0    = pulp.value(grid_export[0]) or 0.0
 
         # FIX (5): configurable threshold; FIX (7): Force Discharge mode
+        vpp_precharge_active = (
+            vpp_precharge_target_idx is not None and vpp_precharge_target_idx >= 0
+        )
         if charge_0 >= force_charge_threshold_kw:
             mode = "Force Charge"
-            reason = (
-                f"LP optimal: charging {charge_0:.2f} kW at {period_prices[0]:.1f}p "
-                f"(threshold {force_charge_threshold_kw} kW)"
-            )
+            if vpp_precharge_active:
+                reason = (
+                    f"LP optimal: charging {charge_0:.2f} kW at {period_prices[0]:.1f}p "
+                    f"— pre-charging for upcoming VPP export event"
+                )
+            else:
+                reason = (
+                    f"LP optimal: charging {charge_0:.2f} kW at {period_prices[0]:.1f}p "
+                    f"(threshold {force_charge_threshold_kw} kW)"
+                )
         elif discharge_0 >= force_discharge_threshold_kw and export_0 > force_discharge_export_min_kw:
             # LP wants to actively discharge to grid — use Force Discharge
             mode = "Force Discharge"

@@ -8,6 +8,8 @@ import { overridesApi } from '@/api/overrides'
 import { systemApi } from '@/api/settings'
 import { useLiveState } from '@/hooks/useLiveState'
 import type { ManualOverrideDetectedData } from '@/types/domain'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
 
 const DURATIONS = [30, 60, 120, 240, 480]
 
@@ -66,19 +68,19 @@ export default function Controls() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Manual Controls</h1>
+      <h1 className="font-display text-2xl tracking-display text-foreground">Manual Controls</h1>
 
       {/* Auto-detection notification banner — persists until dismissed */}
       {detectedOverride && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
-          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-lg border border-signal/40 bg-signal/10 p-4">
+          <AlertTriangle className="h-5 w-5 text-signal shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-300">External change detected</p>
-            <p className="text-xs text-amber-400/80 mt-0.5">{detectedOverride.message}</p>
+            <p className="text-sm font-medium text-foreground">External change detected</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{detectedOverride.message}</p>
           </div>
           <button
             onClick={() => setDetectedOverride(null)}
-            className="text-amber-400/60 hover:text-amber-300 shrink-0"
+            className="text-muted-foreground hover:text-foreground shrink-0"
             aria-label="Dismiss notification"
           >
             <X className="h-4 w-4" />
@@ -87,34 +89,35 @@ export default function Controls() {
       )}
 
       {/* Duration Selector */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-sm font-medium mb-3">Override Duration</h2>
+      <Card>
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Override Duration</h2>
         <div className="flex gap-2 flex-wrap">
           {DURATIONS.map(d => (
-            <button
+            <Button
               key={d}
+              variant={selectedDuration === d ? 'signal' : 'outline'}
               onClick={() => setSelectedDuration(d)}
-              className={`px-3 py-1.5 text-sm rounded ${selectedDuration === d ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+              className="px-3 py-1.5 text-sm"
             >
               {d >= 60 ? `${d / 60}h` : `${d}min`}
-            </button>
+            </Button>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Immersion Overrides */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-sm font-medium mb-3">Immersion Overrides</h2>
+      <Card>
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Immersion Overrides</h2>
         <div className="space-y-3">
           {(devices ?? []).map(device => {
             const status = overrideStatus?.find(s => s.immersion_id === device.id)
             const isAutoDetected = status?.override?.source === 'ha_external'
             return (
-              <div key={device.id} className="flex items-center justify-between p-3 rounded border border-border">
+              <div key={device.id} className="flex items-center justify-between p-3 rounded-lg border border-border">
                 <div>
-                  <div className="font-medium text-sm">{device.display_name}</div>
+                  <div className="font-medium text-sm text-foreground">{device.display_name}</div>
                   {status?.has_active_override && (
-                    <div className={`text-xs mt-0.5 ${isAutoDetected ? 'text-amber-400' : 'text-yellow-400'}`}>
+                    <div className="text-xs mt-0.5 text-signal">
                       {isAutoDetected ? (
                         <span className="flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3" />
@@ -127,61 +130,43 @@ export default function Controls() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => setOverrideMutation.mutate({ id: device.id, state: true })}
-                    className="px-3 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded"
-                  >
+                  <Button variant="filled" className="px-3 py-1 text-xs" onClick={() => setOverrideMutation.mutate({ id: device.id, state: true })}>
                     ON
-                  </button>
-                  <button
-                    onClick={() => setOverrideMutation.mutate({ id: device.id, state: false })}
-                    className="px-3 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded"
-                  >
+                  </Button>
+                  <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => setOverrideMutation.mutate({ id: device.id, state: false })}>
                     OFF
-                  </button>
-                  <button
-                    onClick={() => clearMutation.mutate(device.id)}
-                    className="px-3 py-1 text-xs bg-secondary hover:bg-accent text-muted-foreground rounded"
-                  >
+                  </Button>
+                  <Button variant="ghost" className="px-3 py-1 text-xs" onClick={() => clearMutation.mutate(device.id)}>
                     Auto
-                  </button>
+                  </Button>
                 </div>
               </div>
             )
           })}
         </div>
-      </div>
+      </Card>
 
       {/* System Control */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-sm font-medium mb-3">System Control</h2>
+      <Card>
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">System Control</h2>
         <div className="flex gap-3 flex-wrap">
-          <button
-            onClick={() => optimizeMutation.mutate()}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded"
-          >
+          <Button variant="signal" onClick={() => optimizeMutation.mutate()}>
             Run Optimization Now
-          </button>
-          <button
-            onClick={() => pauseMutation.mutate()}
-            className="px-4 py-2 text-sm bg-yellow-600 hover:bg-yellow-500 text-white rounded"
-          >
+          </Button>
+          <Button variant="outline" onClick={() => pauseMutation.mutate()}>
             Pause Automation
-          </button>
-          <button
-            onClick={() => resumeMutation.mutate()}
-            className="px-4 py-2 text-sm bg-green-600 hover:bg-green-500 text-white rounded"
-          >
+          </Button>
+          <Button variant="outline" onClick={() => resumeMutation.mutate()}>
             Resume Automation
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Active Overrides */}
       {activeOverrides.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-4">
+        <Card>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium">Active Overrides</h2>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Overrides</h2>
             <button
               onClick={() => clearAllMutation.mutate()}
               className="text-xs text-red-400 hover:text-red-300"
@@ -195,16 +180,16 @@ export default function Controls() {
               return (
                 <div
                   key={s.immersion_id}
-                  className={`flex items-center justify-between p-2 rounded ${
-                    isAutoDetected ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-secondary/50'
+                  className={`flex items-center justify-between p-2 rounded-lg ${
+                    isAutoDetected ? 'bg-signal/10 border border-signal/30' : 'bg-fog'
                   }`}
                 >
                   <div className="flex items-center gap-2">
                     {isAutoDetected && (
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                      <AlertTriangle className="h-3.5 w-3.5 text-signal shrink-0" />
                     )}
                     <div>
-                      <span className="text-sm">
+                      <span className="text-sm text-foreground">
                         {s.immersion_name}: {s.override?.desired_state ? 'ON' : 'OFF'} until{' '}
                         {s.override
                           ? new Date(s.override.expires_at).toLocaleTimeString('en-GB', {
@@ -214,7 +199,7 @@ export default function Controls() {
                           : '—'}
                       </span>
                       {isAutoDetected && (
-                        <div className="text-xs text-amber-400/80">
+                        <div className="text-xs text-muted-foreground">
                           Auto-detected — turned {s.override?.desired_state ? 'ON' : 'OFF'} manually in Home Assistant
                         </div>
                       )}
@@ -230,7 +215,7 @@ export default function Controls() {
               )
             })}
           </div>
-        </div>
+        </Card>
       )}
     </div>
   )

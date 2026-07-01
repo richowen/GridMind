@@ -1,6 +1,7 @@
-/** Solar power and forecast card. */
+/** Solar power and forecast metric card. */
 
 import { Sun } from 'lucide-react'
+import Card from '@/components/ui/Card'
 
 interface SolarCardProps {
   powerKw: number | null
@@ -9,17 +10,19 @@ interface SolarCardProps {
 
 export default function SolarCard({ powerKw, forecastKwh }: SolarCardProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Sun className="h-4 w-4 text-yellow-400" />
+    <Card>
+      <div className="flex items-center gap-2 mb-4">
+        <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-signal/15 text-signal">
+          <Sun className="h-3.5 w-3.5" />
+        </span>
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Solar</span>
       </div>
-      <div className="text-3xl font-bold text-foreground mb-1">
-        {powerKw !== null ? `${powerKw.toFixed(1)} kW` : '—'}
+      <div className="font-display text-4xl tracking-display text-foreground mb-3">
+        {powerKw !== null ? `${powerKw.toFixed(1)}kW` : '—'}
       </div>
       <div className="text-xs text-muted-foreground">
         Today remaining: {forecastKwh !== null ? `${forecastKwh.toFixed(1)} kWh` : '—'}
       </div>
-    </div>
+    </Card>
   )
 }

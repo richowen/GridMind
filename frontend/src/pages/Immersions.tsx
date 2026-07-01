@@ -7,6 +7,9 @@ import { immersionApi } from '@/api/immersion'
 import type { ImmersionDeviceOut, SmartRuleOut, TempTargetOut } from '@/types/api'
 import { RuleForm, BLANK_RULE } from '@/components/immersion/RuleForm'
 import { TargetForm, BLANK_TARGET } from '@/components/immersion/TargetForm'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import Pill from '@/components/ui/Pill'
 
 export default function Immersions() {
   const qc = useQueryClient()
@@ -100,7 +103,7 @@ export default function Immersions() {
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['devices'] })
       setSelectedDevice(updated)
-      setDeviceSaved('✅ Saved')
+      setDeviceSaved('Saved')
       setTimeout(() => setDeviceSaved(null), 2500)
     },
   })
@@ -137,19 +140,16 @@ export default function Immersions() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Immersion Control Manager</h1>
-      </div>
+      <h1 className="font-display text-2xl tracking-display text-foreground">Immersion Control Manager</h1>
 
       {/* Device List */}
       <div className="space-y-3">
         {(devices ?? []).map(device => (
-          <div
+          <Card
             key={device.id}
-            className={`rounded-lg border p-4 cursor-pointer transition-colors ${
-              selectedDevice?.id === device.id
-                ? 'border-primary bg-accent'
-                : 'border-border bg-card hover:bg-accent/50'
+            padding="sm"
+            className={`cursor-pointer transition-colors ${
+              selectedDevice?.id === device.id ? 'border-signal' : 'hover:bg-accent/40'
             }`}
             onClick={() => {
               setSelectedDevice(device)
@@ -159,35 +159,39 @@ export default function Immersions() {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Flame className={`h-5 w-5 ${device.is_enabled ? 'text-orange-400' : 'text-muted-foreground'}`} />
+                <span className={`flex h-8 w-8 items-center justify-center rounded-pill ${device.is_enabled ? 'bg-signal/15 text-signal' : 'bg-fog text-muted-foreground'}`}>
+                  <Flame className="h-4 w-4" />
+                </span>
                 <div>
-                  <div className="font-medium">{device.display_name}</div>
+                  <div className="font-medium text-foreground">{device.display_name}</div>
                   <div className="text-xs text-muted-foreground">{device.switch_entity_id}</div>
                 </div>
               </div>
-              <div className={`text-xs px-2 py-1 rounded ${device.is_enabled ? 'bg-green-500/20 text-green-400' : 'bg-secondary text-muted-foreground'}`}>
+              <Pill variant={device.is_enabled ? 'signal' : 'outline'}>
                 {device.is_enabled ? 'Enabled' : 'Disabled'}
-              </div>
+              </Pill>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
       {/* Device Config */}
       {selectedDevice && (
-        <div className="rounded-lg border border-border bg-card p-4">
-          <h2 className="font-medium mb-4">Configuring: {selectedDevice.display_name}</h2>
+        <Card>
+          <h2 className="font-medium text-foreground mb-4">Configuring: {selectedDevice.display_name}</h2>
 
           {/* Tabs */}
-          <div className="flex gap-2 mb-4">
-            {([['rules','Smart Rules'],['targets','Temperature Targets'],['device','Device Settings']] as const).map(([tab,label]) => (
-              <button
+          <div className="inline-flex gap-1 mb-4 rounded-nav border border-border bg-fog p-1">
+            {([['rules', 'Smart Rules'], ['targets', 'Temperature Targets'], ['device', 'Device Settings']] as const).map(([tab, label]) => (
+              <Button
                 key={tab}
+                variant={activeTab === tab ? 'signal' : 'ghost'}
+                className="px-3 py-1.5 text-sm"
                 onClick={() => {
                   setActiveTab(tab)
                   setRuleFormMode(null)
                   setTargetFormMode(null)
-                  if(tab==='device') setDeviceEdit({
+                  if (tab === 'device') setDeviceEdit({
                     display_name: selectedDevice.display_name,
                     switch_entity_id: selectedDevice.switch_entity_id,
                     temp_sensor_entity_id: selectedDevice.temp_sensor_entity_id ?? '',
@@ -195,12 +199,9 @@ export default function Immersions() {
                     sort_order: selectedDevice.sort_order,
                   })
                 }}
-                className={`px-3 py-1.5 text-sm rounded ${
-                  activeTab === tab ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
-                }`}
               >
                 {label}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -217,13 +218,11 @@ export default function Immersions() {
                       onCancel={() => setRuleFormMode(null)}
                     />
                   ) : (
-                    <div className="rounded border border-border p-3 flex items-center justify-between gap-3">
+                    <div className="rounded-lg border border-border p-3 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="text-xs text-muted-foreground w-6 shrink-0">#{rule.priority}</span>
-                        <span className="font-medium text-sm truncate">{rule.rule_name}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${rule.action === 'ON' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                          {rule.action}
-                        </span>
+                        <span className="font-medium text-sm truncate text-foreground">{rule.rule_name}</span>
+                        <Pill variant={rule.action === 'ON' ? 'success' : 'danger'} size="xs">{rule.action}</Pill>
                         <span className="text-xs text-muted-foreground shrink-0">{rule.logic_operator}</span>
                         {!rule.is_enabled && (
                           <span className="text-xs text-muted-foreground shrink-0">(disabled)</span>
@@ -263,15 +262,15 @@ export default function Immersions() {
                   onCancel={() => setRuleFormMode(null)}
                 />
               ) : (
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => {
                     setRuleFormInitial(BLANK_RULE)
                     setRuleFormMode('new')
                   }}
-                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mt-1"
                 >
                   <Plus className="h-4 w-4" /> Add Rule
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -283,18 +282,18 @@ export default function Immersions() {
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Display Name</label>
                   <input
-                    className="w-full rounded border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-signal"
                     value={deviceEdit.display_name ?? ''}
-                    onChange={e => setDeviceEdit(p => ({...p, display_name: e.target.value}))}
+                    onChange={e => setDeviceEdit(p => ({ ...p, display_name: e.target.value }))}
                   />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Switch Entity ID</label>
                   <input
-                    className="w-full rounded border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-signal"
                     placeholder="switch.immersion_main"
                     value={deviceEdit.switch_entity_id ?? ''}
-                    onChange={e => setDeviceEdit(p => ({...p, switch_entity_id: e.target.value}))}
+                    onChange={e => setDeviceEdit(p => ({ ...p, switch_entity_id: e.target.value }))}
                   />
                 </div>
                 <div>
@@ -303,14 +302,14 @@ export default function Immersions() {
                     <span className="ml-1 text-muted-foreground/60">(optional — enables temp rules &amp; Why? trace)</span>
                   </label>
                   <input
-                    className="w-full rounded border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-signal"
                     placeholder="sensor.immersion_main_temperature"
                     value={deviceEdit.temp_sensor_entity_id ?? ''}
-                    onChange={e => setDeviceEdit(p => ({...p, temp_sensor_entity_id: e.target.value || null}))}
+                    onChange={e => setDeviceEdit(p => ({ ...p, temp_sensor_entity_id: e.target.value || null }))}
                   />
                   {selectedDevice.temp_sensor_entity_id
-                    ? <p className="text-xs text-green-400 mt-1">✅ Sensor configured — temp will be read from HA on each evaluation</p>
-                    : <p className="text-xs text-yellow-400 mt-1">⚠ No sensor — temp rules will be skipped (⏭) until one is set</p>
+                    ? <p className="text-xs text-emerald-400 mt-1">Sensor configured — temp will be read from HA on each evaluation</p>
+                    : <p className="text-xs text-amber-400 mt-1">No sensor — temp rules will be skipped until one is set</p>
                   }
                 </div>
                 <div className="flex items-center gap-3">
@@ -318,9 +317,9 @@ export default function Immersions() {
                     <label className="text-xs text-muted-foreground block mb-1">Sort Order</label>
                     <input
                       type="number"
-                      className="w-24 rounded border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-signal"
                       value={deviceEdit.sort_order ?? 0}
-                      onChange={e => setDeviceEdit(p => ({...p, sort_order: parseInt(e.target.value) || 0}))}
+                      onChange={e => setDeviceEdit(p => ({ ...p, sort_order: parseInt(e.target.value) || 0 }))}
                     />
                   </div>
                   <div className="flex items-center gap-2 pt-4">
@@ -328,23 +327,23 @@ export default function Immersions() {
                       type="checkbox"
                       id="dev-enabled"
                       checked={deviceEdit.is_enabled ?? true}
-                      onChange={e => setDeviceEdit(p => ({...p, is_enabled: e.target.checked}))}
-                      className="h-4 w-4"
+                      onChange={e => setDeviceEdit(p => ({ ...p, is_enabled: e.target.checked }))}
+                      className="h-4 w-4 accent-signal"
                     />
-                    <label htmlFor="dev-enabled" className="text-sm">Enabled</label>
+                    <label htmlFor="dev-enabled" className="text-sm text-foreground">Enabled</label>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button
+                <Button
+                  variant="signal"
                   onClick={() => updateDeviceMutation.mutate(deviceEdit)}
                   disabled={updateDeviceMutation.isPending}
-                  className="px-4 py-1.5 rounded bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 disabled:opacity-50"
                 >
                   {updateDeviceMutation.isPending ? 'Saving…' : 'Save Changes'}
-                </button>
-                {deviceSaved && <span className="text-xs text-green-400">{deviceSaved}</span>}
-                {updateDeviceMutation.isError && <span className="text-xs text-red-400">❌ Save failed</span>}
+                </Button>
+                {deviceSaved && <span className="text-xs text-emerald-400">{deviceSaved}</span>}
+                {updateDeviceMutation.isError && <span className="text-xs text-red-400">Save failed</span>}
               </div>
             </div>
           )}
@@ -362,9 +361,9 @@ export default function Immersions() {
                       onCancel={() => setTargetFormMode(null)}
                     />
                   ) : (
-                    <div className="rounded border border-border p-3 flex items-center justify-between gap-3">
+                    <div className="rounded-lg border border-border p-3 flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-medium text-sm">{target.target_name}</div>
+                        <div className="font-medium text-sm text-foreground">{target.target_name}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">
                           {target.target_temp_c}°C by {target.target_time} · days {target.days_of_week} · {target.heating_rate_c_per_hour}°C/hr · {target.buffer_minutes}min buffer
                           {!target.is_enabled && ' · (disabled)'}
@@ -404,19 +403,19 @@ export default function Immersions() {
                   onCancel={() => setTargetFormMode(null)}
                 />
               ) : (
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => {
                     setTargetFormInitial(BLANK_TARGET)
                     setTargetFormMode('new')
                   }}
-                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mt-1"
                 >
                   <Plus className="h-4 w-4" /> Add Temperature Target
-                </button>
+                </Button>
               )}
             </div>
           )}
-        </div>
+        </Card>
       )}
     </div>
   )

@@ -215,6 +215,7 @@ async def optimization_loop():
                 solar_forecast_profile=solar_profile,
                 live_charge_rate_kw=live_charge_rate,
                 live_battery_voltage_v=live_battery_voltage,
+                vpp_event=vpp_event,
             )
 
             result = await run_optimization(inp)

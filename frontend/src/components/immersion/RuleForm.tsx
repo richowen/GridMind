@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Check, X } from 'lucide-react'
 import type { SmartRuleOut } from '@/types/api'
 import { ConditionRow, TimeConditionRow } from './ConditionRow'
+import Button from '@/components/ui/Button'
 
 const BLANK_RULE: Partial<SmartRuleOut> = {
   rule_name: '',
@@ -44,13 +45,13 @@ export function RuleForm({
     setForm(prev => ({ ...prev, [key]: value }))
 
   return (
-    <div className="rounded border border-border bg-secondary/40 p-4 space-y-4">
+    <div className="rounded-lg border border-border bg-fog p-4 space-y-4">
       {/* Name / Priority / Action / Logic */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Rule Name</label>
           <input
-            className="w-full bg-secondary border border-border rounded px-2 py-1.5 text-sm"
+            className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-signal"
             value={form.rule_name ?? ''}
             onChange={e => set('rule_name', e.target.value)}
           />
@@ -59,7 +60,7 @@ export function RuleForm({
           <label className="text-xs text-muted-foreground block mb-1">Priority (lower = higher)</label>
           <input
             type="number"
-            className="w-full bg-secondary border border-border rounded px-2 py-1.5 text-sm"
+            className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-signal"
             value={form.priority ?? 10}
             onChange={e => set('priority', Number(e.target.value))}
           />
@@ -67,7 +68,7 @@ export function RuleForm({
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Action</label>
           <select
-            className="w-full bg-secondary border border-border rounded px-2 py-1.5 text-sm"
+            className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-signal"
             value={form.action ?? 'ON'}
             onChange={e => set('action', e.target.value)}
           >
@@ -78,7 +79,7 @@ export function RuleForm({
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Logic (how conditions combine)</label>
           <select
-            className="w-full bg-secondary border border-border rounded px-2 py-1.5 text-sm"
+            className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-signal"
             value={form.logic_operator ?? 'AND'}
             onChange={e => set('logic_operator', e.target.value)}
           >
@@ -153,25 +154,19 @@ export function RuleForm({
           type="checkbox"
           checked={form.is_enabled ?? true}
           onChange={e => set('is_enabled', e.target.checked)}
-          className="accent-primary"
+          className="accent-signal"
         />
-        <span className="text-sm">Rule enabled</span>
+        <span className="text-sm text-foreground">Rule enabled</span>
       </div>
 
       {/* Actions */}
       <div className="flex gap-2 pt-1">
-        <button
-          onClick={() => onSave(form)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:opacity-90"
-        >
+        <Button variant="signal" className="px-3 py-1.5 text-sm" onClick={() => onSave(form)}>
           <Check className="h-3.5 w-3.5" /> Save Rule
-        </button>
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-secondary rounded hover:bg-accent"
-        >
+        </Button>
+        <Button variant="ghost" className="px-3 py-1.5 text-sm" onClick={onCancel}>
           <X className="h-3.5 w-3.5" /> Cancel
-        </button>
+        </Button>
       </div>
     </div>
   )

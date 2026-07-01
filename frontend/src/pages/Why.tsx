@@ -1,6 +1,7 @@
 /**Why page — full system decision trace: what readings, what rules, why each device is ON/OFF.*/
 import {useState,useCallback} from 'react'
 import {fetchWhy,switchImmersion,type WhyResponse,type ConditionTrace,type RuleTrace,type DeviceDebugResult} from '@/api/why'
+import Button from '@/components/ui/Button'
 
 function fmtVal(v:number|null,unit:string){
   if(v===null||v===undefined) return <span className="text-muted-foreground italic">no data</span>
@@ -188,24 +189,21 @@ export default function Why(){
     <div className="space-y-4 max-w-4xl mx-auto pb-12">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Why is the system doing this?</h1>
+          <h1 className="font-display text-2xl tracking-display text-foreground">Why is the system doing this?</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Full decision trace — what readings are visible, why each rule matched or didn't</p>
         </div>
         <div className="flex gap-2">
           {data&&(
             <div className="flex items-center gap-2">
-              {copyMsg&&<span className="text-xs text-green-400">{copyMsg}</span>}
-              <button onClick={copyAI}
-                className="px-3 py-2 rounded-lg border border-border bg-card text-sm hover:bg-accent transition-colors"
-                title="Copy full trace as JSON for AI debugging">
-                📋 Copy for AI
-              </button>
+              {copyMsg&&<span className="text-xs text-emerald-400">{copyMsg}</span>}
+              <Button variant="outline" onClick={copyAI} title="Copy full trace as JSON for AI debugging">
+                Copy for AI
+              </Button>
             </div>
           )}
-          <button onClick={load} disabled={loading}
-            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/80 disabled:opacity-50 transition-colors">
-            {loading?'Loading…':'🔍 Fetch Trace'}
-          </button>
+          <Button variant="signal" onClick={load} disabled={loading}>
+            {loading?'Loading…':'Fetch Trace'}
+          </Button>
         </div>
       </div>
 

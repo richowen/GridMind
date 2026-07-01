@@ -1,25 +1,46 @@
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * GridMind design tokens — dark adaptation of the "Ventriloc" reference
+ * (docs/DESIGN.md). Surfaces are inverted from the light-theme doc while
+ * every other decision (Signal Orange accent, pill radii, type pairing,
+ * soft elevation) carries over unchanged.
+ */
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --radius: 0.5rem;
+    /* Canvas / Paper / Fog / Chalk — inverted surface stack */
+    --background: 0 0% 8%;         /* #141414 canvas */
+    --foreground: 0 0% 95%;        /* near-white text */
+    --card: 0 0% 12%;              /* #1e1e1e paper */
+    --card-foreground: 0 0% 95%;
+    --fog: 0 0% 14%;               /* #242424 inset bands */
+    --chalk: 0 0% 16%;             /* #2a2a2a nav / soft dividers */
+
+    --primary: 0 0% 95%;
+    --primary-foreground: 0 0% 8%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 64%;  /* lightened Graphite for dark bg */
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 95%;
+    --border: 0 0% 20%;            /* light-on-dark hairline */
+    --input: 0 0% 20%;
+    --ring: 18 100% 58%;
+
+    /* Signal Orange — unchanged from the light-theme doc, #ff682c */
+    --signal: 18 100% 58%;
+    --signal-foreground: 0 0% 8%;
+
+    --radius: 0.75rem;
   }
 }
 
@@ -28,6 +49,9 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display tracking-display;
   }
 }

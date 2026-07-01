@@ -1,6 +1,7 @@
-/** Battery SoC gauge card with mode indicator. */
+/** Battery SoC metric card — big value, thin progress rail, mode label. */
 
 import { Battery } from 'lucide-react'
+import Card from '@/components/ui/Card'
 
 interface BatteryCardProps {
   soc: number | null
@@ -9,21 +10,22 @@ interface BatteryCardProps {
 
 export default function BatteryCard({ soc, mode }: BatteryCardProps) {
   const pct = soc ?? 0
-  const color = pct > 60 ? 'bg-green-500' : pct > 20 ? 'bg-yellow-500' : 'bg-red-500'
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Battery className="h-4 w-4 text-muted-foreground" />
+    <Card>
+      <div className="flex items-center gap-2 mb-4">
+        <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-signal/15 text-signal">
+          <Battery className="h-3.5 w-3.5" />
+        </span>
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Battery</span>
       </div>
-      <div className="text-3xl font-bold text-foreground mb-2">
+      <div className="font-display text-4xl tracking-display text-foreground mb-3">
         {soc !== null ? `${soc.toFixed(0)}%` : '—'}
       </div>
-      <div className="w-full bg-secondary rounded-full h-2 mb-2">
-        <div className={`h-2 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      <div className="w-full bg-fog rounded-pill h-1.5 mb-3 overflow-hidden">
+        <div className="h-full rounded-pill bg-signal transition-all" style={{ width: `${pct}%` }} />
       </div>
       <div className="text-xs text-muted-foreground">{mode ?? 'Unknown'}</div>
-    </div>
+    </Card>
   )
 }

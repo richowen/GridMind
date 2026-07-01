@@ -4,6 +4,8 @@ This document provides a highly detailed, instruction-level playbook for an AI c
 
 By embedding Axle's **£1.00+/kWh** export event periods directly into the math-based Linear Programming (LP) optimization matrix, GridMind can automatically prepare the home battery (e.g., pre-charging from cheap solar/grid slots) to execute maximum high-rate exports during grid stress windows.
 
+API Bearer Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpbnRlcm5hbF9zaXRlX2lkIjoiNGI4MjNmMzYtZmQ0Mi00ZGI2LWI4OTItNzlmZWJkNjc1YWY0Iiwic2NvcGUiOlsidnBwOmhvbWVfYXNzaXN0YW50Il0sImV4cCI6MjY0NjMxNzQyMn0.7IW9rmTQ_ryrzdq0ssC4mjvCYURz2fqTLJC9AX2TRnQ
+
 ---
 
 ## 1. Context & API Intelligence
