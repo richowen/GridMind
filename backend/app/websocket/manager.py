@@ -25,9 +25,11 @@ async def _fetch_initial_state(db) -> Optional[dict]:
     Extracted from WebSocketManager.handle() so the connection manager stays
     focused on connection lifecycle rather than business logic.
     """
+    from app.core.scheduler import _build_vpp_event_payload
     from app.core.settings_cache import get_settings
     from app.models.optimization import OptimizationResult, SystemState
     from app.models.prices import ElectricityPrice
+    from app.services.axle import axle_client
     from app.services.octopus_energy import get_current_price_classification
 
     latest_opt = (
@@ -54,6 +56,11 @@ async def _fetch_initial_state(db) -> Optional[dict]:
     )
     price_classification = get_current_price_classification(price_rows, now, get_settings())
 
+    # Fetch the live VPP event so a freshly connected browser (page load/refresh)
+    # sees the banner and highlighted price slots immediately, rather than waiting
+    # up to optimization_interval_minutes for the next broadcast to populate it.
+    vpp_event = await axle_client.get_active_event()
+
     return {
         "battery_soc": latest_opt.current_soc,
         "battery_mode": latest_state.battery_mode if latest_state else None,
@@ -65,6 +72,7 @@ async def _fetch_initial_state(db) -> Optional[dict]:
         "recommended_mode": latest_opt.recommended_mode,
         "decision_reason": latest_opt.decision_reason,
         "live_charge_rate_kw": None,  # Not stored in DB; populated by next broadcast
+        "vpp_event": _build_vpp_event_payload(vpp_event, now),
         "last_updated": (latest_opt.timestamp.isoformat() + "Z") if latest_opt.timestamp else None,
     }
 
