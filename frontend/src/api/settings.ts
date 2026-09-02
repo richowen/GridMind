@@ -13,6 +13,7 @@ export const settingsApi = {
   testHA: () => api.post<ConnectionTestResult>('/settings/test/ha'),
   testOctopus: () => api.post<ConnectionTestResult>('/settings/test/octopus'),
   testInflux: () => api.post<ConnectionTestResult>('/settings/test/influx'),
+  testDiscord: () => api.post<ConnectionTestResult>('/settings/test/discord'),
   exportSettings: () => api.get<Record<string, string>>('/settings/export'),
   importSettings: (settings: Record<string, string>) =>
     api.post<{ imported: number }>('/settings/import', settings),

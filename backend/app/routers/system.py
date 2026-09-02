@@ -83,6 +83,16 @@ async def test_influx_connection():
     return ConnectionTestResult(**result)
 
 
+@router.post("/settings/test/discord", response_model=ConnectionTestResult)
+async def test_discord_webhook():
+    from app.services.discord import send_discord_alert
+    ok = await send_discord_alert("✅ GridMind test alert — Discord webhook is configured correctly.")
+    return ConnectionTestResult(
+        success=ok,
+        message="Test message sent" if ok else "Failed to send — check the webhook URL and logs",
+    )
+
+
 # ── Export / Import ───────────────────────────────────────────────────────────
 
 @router.get("/settings/export")

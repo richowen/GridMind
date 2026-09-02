@@ -17,6 +17,7 @@ const SECTION_LABELS: Record<string, string> = {
   immersion: 'Immersion Control',
   influxdb: 'InfluxDB (optional)',
   system: 'System',
+  alerts: 'Discord Alerts',
 }
 
 export default function Settings() {
@@ -50,6 +51,11 @@ export default function Settings() {
   const testInflux = async () => {
     const r = await settingsApi.testInflux()
     setTestResults(prev => ({ ...prev, influx: r }))
+  }
+
+  const testDiscord = async () => {
+    const r = await settingsApi.testDiscord()
+    setTestResults(prev => ({ ...prev, discord: r }))
   }
 
   const handleChange = (key: string, value: string) => {
@@ -134,6 +140,18 @@ export default function Settings() {
                 {testResults.influx && (
                   <span className={`text-xs ${testResults.influx.success ? 'text-emerald-400' : 'text-red-400'}`}>
                     {testResults.influx.message}
+                  </span>
+                )}
+              </div>
+            )}
+            {category === 'alerts' && (
+              <div className="mt-3 flex items-center gap-3">
+                <Button variant="outline" className="text-xs px-3 py-1.5" onClick={testDiscord}>
+                  Send Test Alert
+                </Button>
+                {testResults.discord && (
+                  <span className={`text-xs ${testResults.discord.success ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {testResults.discord.message}
                   </span>
                 )}
               </div>

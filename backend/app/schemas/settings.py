@@ -33,6 +33,7 @@ class SettingsGrouped(BaseModel):
     optimization: List[SettingOut] = []
     influxdb: List[SettingOut] = []
     system: List[SettingOut] = []
+    alerts: List[SettingOut] = []
 
 
 class ConnectionTestResult(BaseModel):

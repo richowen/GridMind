@@ -364,11 +364,13 @@ async def immersion_evaluation():
     try:
         from app.core.rules_engine import rules_engine, SystemState as RulesState
         from app.core.action_executor import action_executor
+        from app.core.heater_stall_monitor import evaluate_stall
         from app.core.settings_cache import get_setting_int
         from app.database import SessionLocal
         from app.models.immersion import ImmersionDevice
         from app.models.overrides import ManualOverride
         from app.models.prices import ElectricityPrice
+        from app.services.discord import send_discord_alert
         from app.services.home_assistant import ha_client
         from app.services.influxdb import influx_client
         from app.websocket.manager import manager
@@ -538,6 +540,20 @@ async def immersion_evaluation():
                 )
 
                 await action_executor.apply_immersion(device, decision, db=db)
+
+                # Alert if a temperature-target-driven heat call isn't raising the
+                # real water temp (e.g. a tripped thermal safety switch) — the
+                # switch state can look fine while the element silently does nothing.
+                stall_message = evaluate_stall(
+                    device_id=device.id,
+                    device_label=device.display_name,
+                    is_temp_target_heating=(decision.source == "temperature_target" and decision.action is True),
+                    current_temp=temp,
+                    now=now,
+                )
+                if stall_message:
+                    logger.warning(stall_message)
+                    await send_discord_alert(stall_message)
 
                 # Write per-device immersion state snapshot to InfluxDB.
                 # Use the decision outcome as the post-action state rather than
